@@ -1,89 +1,71 @@
-📈 Crypto Trading Bot (Binance Testnet)
+# 📈 Crypto Trading Bot (Binance Testnet)
 
-Automated algorithmic trading bot for Binance Testnet using
-Node.js, CCXT-like custom client, multi-strategy engine, JSON persistence, trailing-stop, RSI logic, candle-based exits, and real-time keyboard controls.
+Automated algorithmic trading bot for Binance Testnet using  
+**Node.js, custom Binance API client, multi-strategy engine, state persistence, trailing-stop logic, RSI filters, candle-pattern exits, and real-time keyboard controls.**
 
-🚀 Features
-Core Trading Engine
+---
 
-Multi-strategy support:
+## 🚀 Features
 
-Strategy 1: SMA Golden Cross
+### **Core Trading Engine**
+- Multi-strategy support:
+  - **Strategy 1:** SMA Golden Cross  
+  - **Strategy 2:** Trend + Pullback + RSI  
+  - **Strategy 3:** EMA9/21 + ATR Volatility Filter  
+- Automatic selection of top-volume symbols.
+- Smart trailing-stop system.
+- Candle-red exit confirmation logic.
+- Trade history tracking with PNL per position.
+- JSON-state persistence for crash-safe recovery.
 
-Strategy 2: Trend + Pullback + RSI
+---
 
-Strategy 3: EMA9/21 + ATR Volatility Filter
+## 🎮 Real-Time Controls
 
-Auto selection of top-volume symbols.
+| Key | Action |
+|-----|--------|
+| **Shift + S** | Emergency SELL SWITCH – close all positions |
+| **Shift + R** | Sell all + reset PNL baseline |
+| **1 / 2 / 3** | Switch strategy |
+| **Ctrl + C** | Exit bot |
 
-Full live data from Binance Testnet.
+---
 
-Smart trailing stop logic (dynamic).
-
-Candle-pattern exit confirmation.
-
-Real-time performance tracking (performance.json).
-
-Real-Time Controls
-Key	Function
-Shift + S	Emergency SELL SWITCH – close all open positions
-Shift + R	SELL ALL + Reset PNL baseline
-1 / 2 / 3	Switch between strategies
-Ctrl + C	Exit bot
-State Persistence
-
-The bot stores:
-
-Active positions
-
-Selected strategy
-
-Last update timestamp
-
-Trade history
-
-Performance track
-
-Files:
-
-state.json
-performance.json
-state/history.json
-logs/
-
-
-Even after restart — the bot continues exactly from where it stopped.
-
-🏗 Project Structure
+## 🗂 Project Structure
 crypto-bot-testnet/
 │
-├── index.js                # Main loop
-├── config.js               # Global config + strategy params
-├── binanceClient.js        # API Wrapper (signed + public)
-├── utils.js                # Technical indicators
-├── strategy.js             # Strategies engine + execution
-├── input.js                # Keyboard listener
-├── stateManager.js         # Load/save state + performance handling
-├── tradeHistory.js         # Per-trade tracking & PNL stats
+├── index.js # Main loop & orchestrator
+├── config.js # Configuration & strategy parameters
+├── binanceClient.js # Binance API (public + signed)
+├── utils.js # Indicators: SMA, EMA, RSI, ATR
+├── strategy.js # Strategy logic + entry/exit engine
+├── input.js # Keyboard shortcuts
+├── stateManager.js # Saves/loads state + performance
+├── tradeHistory.js # Tracks all trades (entry/exit/PNL)
 │
-├── logs/                   # Daily log files
-├── state/                  # Trade history persistence
-├── performance.json        # Equity timeline
-├── state.json              # Last bot state
+├── logs/ # Daily log files
+├── state/ # trade history JSON
+├── performance.json # Equity timeline
+├── state.json # Last known bot state
 │
-├── .env                    # API KEY + SECRET (ignored by Git)
+├── .env # Binance API keys (ignored by Git)
 ├── .gitignore
 ├── package.json
 
-⚙️ Installation
-1. Clone the repository
+
+---
+
+## ⚙️ Installation
+
+### **1. Clone**
+```bash
 git clone https://github.com/Sunakavi/trading-bot.git
 cd trading-bot
 
 2. Install dependencies
 npm install
 
-3. Create .env file (not committed to Git)
+3. Create .env file
 BINANCE_API_KEY=your_key_here
 BINANCE_API_SECRET=your_secret_here
 BINANCE_BASE_URL=https://testnet.binance.vision
@@ -92,57 +74,55 @@ BINANCE_BASE_URL=https://testnet.binance.vision
 node index.js
 
 
-The bot will:
+On startup the bot will:
 
-Fetch top symbols by volume
+Fetch top USDT symbols by volume
 
-Run the chosen strategy
+Select active symbols
 
-Execute BUY/SELL operations
+Run selected strategy (default Strategy 2)
+
+Execute BUY/SELL orders
 
 Log everything under logs/
 
-Keep state in JSON files
+Persist state so it can resume after restart
 
 📊 Performance Tracking
 
-Every loop logs:
-
-Current equity
-
-PNL % from initial capital
-
-Position values
-
-Account balances
-
-Trade statistics
-
-All performance samples are saved automatically to:
+Performance data is stored in:
 
 performance.json
 
 
-Perfect for graphing your equity curve later.
+Includes:
+
+Equity over time
+
+PNL % from initial capital
+
+Time series samples
+
+Resettable baseline (Shift+R)
+
+Perfect for analytics, dashboards, and ML models.
 
 ⚠️ Disclaimer
 
-This project is for educational and testing use only.
-Trading cryptocurrency involves high financial risk.
-Use only on Binance Testnet unless fully validated.
+This bot is for educational and testnet use only.
+Crypto trading involves high risk.
+Do not use with real funds unless fully validated.
 
-The authors take no responsibility for financial gains or losses.
+🛠 Future Enhancements (Optional)
 
-🛠 Future Enhancements
+Web dashboard (React / Next.js)
 
-Web dashboard (React/Next.js)
+Optimization engine for strategies
 
-Strategy optimization engine
+Multi-timeframe signals
 
-ML/AI signal module
+Dockerization
 
-Multi-timeframe analysis
+Railway auto-deploy
 
-Docker deployment
-
-Railway.cloud auto-deploy
+Telegram alerts
