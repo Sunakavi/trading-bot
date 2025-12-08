@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Trading Bot Control Panel</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; }
+      .btn { padding: 8px 14px; margin: 4px; cursor: pointer; }
+      .btn-primary { background: #007bff; color: #fff; border: none; }
+      .btn-danger { background: #dc3545; color: #fff; border: none; }
+      .log-box {
+        margin-top: 16px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        height: 400px;
+        overflow-y: scroll;
+        background: #111;
+        color: #0f0;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .status-box {
+        margin-bottom: 10px;
+        padding: 10px;
+        border: 1px solid #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Trading Bot Control Panel</h1>
+
+    <div class="status-box">
+      <div>Active Strategy: <span id="strategy-span">-</span></div>
+      <div>Kill Switch: <span id="kill-span">false</span></div>
+      <div>Symbols in state: <span id="symbols-span">0</span></div>
+      <div>Equity: <span id="equity-span">-</span></div>
+      <div>PNL %: <span id="pnl-span">-</span></div>
+    </div>
+
+    <div>
+      <button class="btn btn-primary" onclick="setStrategy(1)">Strategy 1</button>
+      <button class="btn btn-primary" onclick="setStrategy(2)">Strategy 2</button>
+      <button class="btn btn-primary" onclick="setStrategy(3)">Strategy 3</button>
+      <button class="btn btn-danger" onclick="killSwitch()">KILL SWITCH</button>
+    </div>
+
+    <h2>Logs</h2>
+    <div id="logs" class="log-box"></div>
+
+    <script>
+      async function refreshStatus() {
+        try {
+          const res = await fetch("/api/status");
+          const data = await res.json();
+          if (!data.ok) return;
+
+          document.getElementById("strategy-span").textContent =
+            data.activeStrategyId;
+          document.getElementById("kill-span").textContent =
+            data.killSwitch ? "true" : "false";
+          document.getElementById("symbols-span").textContent =
+            data.stateSummary.symbols;
+
+          if (data.performance && data.performance.lastEquity != null) {
+            document.getElementById("equity-span").textContent =
+              data.performance.lastEquity.toFixed(2) + " USDT";
+          }
+          if (data.performance && data.performance.pnlPct != null) {
+            document.getElementById("pnl-span").textContent =
+              data.performance.pnlPct.toFixed(2) + " %";
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function refreshLogs() {
+        try {
+          const res = await fetch("/api/logs");
+          const data = await res.json();
+          if (!data.ok) return;
+          const box = document.getElementById("logs");
+          box.textContent = data.lines.join("\n");
+          box.scrollTop = box.scrollHeight;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function setStrategy(id) {
+        try {
+          await fetch("/api/strategy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+          });
+          refreshStatus();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function killSwitch() {
+        try {
+          await fetch("/api/kill", { method: "POST" });
+          refreshStatus();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // רענון אוטומטי
+      setInterval(refreshStatus, 5000);
+      setInterval(refreshLogs, 5000);
+      refreshStatus();
+      refreshLogs();
+    </script>
+  </body>
+</html>

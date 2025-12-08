@@ -1,6 +1,13 @@
 // index.js (Main File)
 require('dotenv').config();
 const http = require("http");
+const { startHttpServer } = require("./server");
+
+// state משותף בין mainLoop ל־API
+const shared = {
+  activeStrategyId: 2,  // ברירת מחדל – או לטעון מ-state.json
+  killSwitch: false,
+};
 
 const PORT = process.env.PORT || 3000;
 
