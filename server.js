@@ -5,62 +5,70 @@ const fs = require("fs");
 const { loadState, loadPerformance } = require("./stateManager");
 const { log } = require("./log");
 
+// קונפיג חי – נשלט דרך /api/config
+const runtimeConfig = {
+  activeStrategyId: 2,
+  loopIntervalMs: 900000, // 15 דקות
+};
+
+// לקרוא את שורות הלוג האחרונות
 function getLatestLogLines(maxLines = 200) {
-  const logDir = path.join(__dirname, "logs");
-  if (!fs.existsSync(logDir)) return [];
+  try {
+    const logDir = path.join(__dirname, "logs");
+    if (!fs.existsSync(logDir)) return [];
 
-  const files = fs
-    .readdirSync(logDir)
-    .filter((f) => f.endsWith(".log"))
-    .sort(); // לפי תאריך בשם
+    const files = fs
+      .readdirSync(logDir)
+      .filter((f) => f.endsWith(".log"))
+      .sort(); // לפי שם (בד"כ לפי תאריך)
 
-  if (!files.length) return [];
+    if (!files.length) return [];
 
-  const lastFile = path.join(logDir, files[files.length - 1]);
-  const content = fs.readFileSync(lastFile, "utf8");
-  const lines = content.split(/\r?\n/).filter(Boolean);
-  return lines.slice(-maxLines);
+    const lastFile = path.join(logDir, files[files.length - 1]);
+    const content = fs.readFileSync(lastFile, "utf8");
+    const lines = content.split(/\r?\n/).filter(Boolean);
+    return lines.slice(-maxLines);
+  } catch (e) {
+    console.error("getLatestLogLines error:", e);
+    return [];
+  }
 }
 
 function startHttpServer(shared) {
   const app = express();
   app.use(express.json());
 
-  // סטטי – ה־frontend
+  // סטטי – ה-frontend
   app.use(express.static(path.join(__dirname, "public")));
 
   // סטטוס כללי
   app.get("/api/status", (req, res) => {
-    const state = loadState() || {};
-    const perf = loadPerformance() || {};
-    res.json({
-      ok: true,
-      activeStrategyId: shared.activeStrategyId,
-      killSwitch: shared.killSwitch,
-      stateSummary: {
-        symbols: state.positions ? Object.keys(state.positions).length : 0,
-        lastUpdateTs: state.lastUpdateTs || null,
-      },
-      performance: perf,
-    });
-  });
+    try {
+      const state = loadState() || {};
+      const perf = loadPerformance() || {};
 
-  // שינוי אסטרטגיה חיה
-  app.post("/api/strategy", (req, res) => {
-    const { id } = req.body;
-    if (![1, 2, 3].includes(id)) {
-      return res.status(400).json({ ok: false, error: "invalid strategy id" });
+      const symbolsCount = state.positions
+        ? Object.keys(state.positions).length
+        : 0;
+
+      res.json({
+        ok: true,
+        activeStrategyId: shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
+        killSwitch: shared.killSwitch ?? false,
+        stateSummary: {
+          symbols: symbolsCount,
+          lastUpdateTs: state.lastUpdateTs || null,
+        },
+        performance: {
+          lastEquity: perf.lastEquity ?? null,
+          lastPnlPct: perf.lastPnlPct ?? null,
+          lastUpdateTs: perf.lastUpdateTs ?? null,
+        },
+      });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ ok: false, error: "status failed" });
     }
-    shared.activeStrategyId = id;
-    log(`[API] Strategy changed to ${id}`);
-    res.json({ ok: true, activeStrategyId: id });
-  });
-
-  // KILL SWITCH – מכירת הכל בלולאה הבאה
-  app.post("/api/kill", (req, res) => {
-    shared.killSwitch = true;
-    log("[API] KILL SWITCH activated – will SELL ALL next loop");
-    res.json({ ok: true, killSwitch: true });
   });
 
   // לוגים אחרונים
@@ -69,60 +77,60 @@ function startHttpServer(shared) {
     res.json({ ok: true, lines });
   });
 
+  // KILL SWITCH – מכירת הכל בסיבוב הבא
+  app.post("/api/kill", (req, res) => {
+    shared.killSwitch = true;
+    log("[API] KILL SWITCH activated – will SELL ALL on next loop");
+    res.json({ ok: true });
+  });
+
+  // קבלת קונפיג
+  app.get("/api/config", (req, res) => {
+    res.json({
+      ok: true,
+      config: runtimeConfig,
+    });
+  });
+
+  // עדכון קונפיג (אסטרטגיה + אינטרוול)
+  app.post("/api/config", (req, res) => {
+    const body = req.body;
+
+    // אסטרטגיה
+    if (body.activeStrategyId !== undefined) {
+      const id = Number(body.activeStrategyId);
+      if (![1, 2, 3].includes(id)) {
+        return res.status(400).json({ ok: false, error: "Invalid strategy ID" });
+      }
+      runtimeConfig.activeStrategyId = id;
+      shared.activeStrategyId = id;
+      log(`[API] Strategy set to ${id}`);
+    }
+
+    // אינטרוול
+    if (body.loopIntervalMs !== undefined) {
+      const allowed = [60000, 300000, 900000]; // 60s, 5m, 15m
+      const val = Number(body.loopIntervalMs);
+      if (!allowed.includes(val)) {
+        return res.status(400).json({ ok: false, error: "Invalid loop interval" });
+      }
+      runtimeConfig.loopIntervalMs = val;
+      log(`[API] Interval set to ${val} ms`);
+    }
+
+    res.json({
+      ok: true,
+      config: runtimeConfig,
+    });
+  });
+
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     log(`[API] HTTP server listening on port ${PORT}`);
   });
 }
-// =======================
-// CONFIG API
-// =======================
 
-let runtimeConfig = {
-  activeStrategyId: 2,
-  loopIntervalMs: 900000 // 15 דקות
-};
-
-// קבלת קונפיג
-app.get("/api/config", (req, res) => {
-  res.json({
-    ok: true,
-    config: runtimeConfig
-  });
-});
-
-// עדכון קונפיג
-app.post("/api/config", (req, res) => {
-  const body = req.body;
-
-  // ולידציה: אסטרטגיה
-  if (body.activeStrategyId !== undefined) {
-    const id = Number(body.activeStrategyId);
-    if (![1, 2, 3].includes(id)) {
-      return res.status(400).json({ ok: false, error: "Invalid strategy ID" });
-    }
-    runtimeConfig.activeStrategyId = id;
-    log(`[API] Strategy set to ${id}`);
-  }
-
-  // ולידציה: אינטרוול
-  if (body.loopIntervalMs !== undefined) {
-    const allowed = [60000, 300000, 900000]; // 1 דקה, 5 דקות, 15 דקות
-    const val = Number(body.loopIntervalMs);
-    if (!allowed.includes(val)) {
-      return res.status(400).json({ ok: false, error: "Invalid loop interval" });
-    }
-    runtimeConfig.loopIntervalMs = val;
-    log(`[API] Interval set to ${val} ms`);
-  }
-
-  res.json({
-    ok: true,
-    config: runtimeConfig
-  });
-});
 module.exports = {
   startHttpServer,
-  runtimeConfig
+  runtimeConfig,
 };
-
