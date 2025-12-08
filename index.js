@@ -14,6 +14,7 @@ const { runSymbolStrategy, initPositions } = require("./strategy");
 const { setupKeypressListener } = require("./input");
 const { initTradeHistory, getStats } = require("./tradeHistory");
 const { loadState, saveState, loadPerformance, savePerformance } = require("./stateManager");
+const { startHttpServer, runtimeConfig } = require("./server");
 
 // שרת API + FRONTEND
 const { startHttpServer } = require("./server");
@@ -156,8 +157,8 @@ async function mainLoop() {
 
     const persisted = loadState();
     if (persisted) {
-      if (persisted.activeStrategyId !== undefined) {
-        activeStrategyId = persisted.activeStrategyId;
+      if (persisted.runtimeConfig.activeStrategyId !== undefined) {
+        runtimeConfig.activeStrategyId = persisted.runtimeConfig.activeStrategyId;
       }
       if (persisted.positions) {
         for (const sym of Object.keys(persisted.positions)) {
@@ -169,9 +170,9 @@ async function mainLoop() {
 
     while (true) {
       // עדכון ל-API
-      shared.activeStrategyId = activeStrategyId;
+      shared.runtimeConfig.activeStrategyId = runtimeConfig.activeStrategyId;
 
-      log(COLORS.PURPLE + `[STRATEGY] Current: ${activeStrategyId}` + COLORS.RESET);
+      log(COLORS.PURPLE + `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` + COLORS.RESET);
 
       // אם ה-API ביקש KILL
       if (shared.killSwitch) SELL_SWITCH = true;
@@ -194,7 +195,7 @@ async function mainLoop() {
         shared.killSwitch = false;
 
         await logPortfolio();
-        await sleep(LOOP_SLEEP_MS);
+        await sleep(runtimeConfig.loopIntervalMs);
         continue;
       }
 
@@ -209,7 +210,7 @@ async function mainLoop() {
           KILL_SWITCH,
           SELL_SWITCH,
           CANDLE_RED_TRIGGER_PCT,
-          activeStrategyId
+          runtimeConfig.activeStrategyId
         );
       }
 
@@ -222,7 +223,7 @@ async function mainLoop() {
       });
 
       log(`---- wait ${(LOOP_SLEEP_MS / 1000).toFixed(0)} sec ----`);
-      await sleep(LOOP_SLEEP_MS);
+      await sleep(runtimeConfig.loopIntervalMs);
     }
   } catch (err) {
     log(COLORS.RED + "FATAL ERROR in mainLoop:" + COLORS.RESET, err.message);

@@ -74,5 +74,55 @@ function startHttpServer(shared) {
     log(`[API] HTTP server listening on port ${PORT}`);
   });
 }
+// =======================
+// CONFIG API
+// =======================
 
-module.exports = { startHttpServer };
+let runtimeConfig = {
+  activeStrategyId: 2,
+  loopIntervalMs: 900000 // 15 דקות
+};
+
+// קבלת קונפיג
+app.get("/api/config", (req, res) => {
+  res.json({
+    ok: true,
+    config: runtimeConfig
+  });
+});
+
+// עדכון קונפיג
+app.post("/api/config", (req, res) => {
+  const body = req.body;
+
+  // ולידציה: אסטרטגיה
+  if (body.activeStrategyId !== undefined) {
+    const id = Number(body.activeStrategyId);
+    if (![1, 2, 3].includes(id)) {
+      return res.status(400).json({ ok: false, error: "Invalid strategy ID" });
+    }
+    runtimeConfig.activeStrategyId = id;
+    log(`[API] Strategy set to ${id}`);
+  }
+
+  // ולידציה: אינטרוול
+  if (body.loopIntervalMs !== undefined) {
+    const allowed = [60000, 300000, 900000]; // 1 דקה, 5 דקות, 15 דקות
+    const val = Number(body.loopIntervalMs);
+    if (!allowed.includes(val)) {
+      return res.status(400).json({ ok: false, error: "Invalid loop interval" });
+    }
+    runtimeConfig.loopIntervalMs = val;
+    log(`[API] Interval set to ${val} ms`);
+  }
+
+  res.json({
+    ok: true,
+    config: runtimeConfig
+  });
+});
+
+// ייצוא כדי שה-index.js יוכל להשתמש בזה
+module.exports = { startHttpServer, runtimeConfig };
+
+
