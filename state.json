@@ -1,0 +1,108 @@
+{
+  "positions": {
+    "BTCUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "ETHUSDT": {
+      "hasPosition": true,
+      "entryPrice": 3193.5499999999997,
+      "qty": 0.0645,
+      "maxPrice": 3207.57
+    },
+    "SOLUSDT": {
+      "hasPosition": true,
+      "entryPrice": 137.87000000000003,
+      "qty": 284.525,
+      "maxPrice": 137.87000000000003
+    },
+    "XRPUSDT": {
+      "hasPosition": true,
+      "entryPrice": 2.0959999999999996,
+      "qty": 9357.7,
+      "maxPrice": 2.0959999999999996
+    },
+    "GLMRUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "DOGEUSDT": {
+      "hasPosition": true,
+      "entryPrice": 0.1442834781712738,
+      "qty": 67938,
+      "maxPrice": 0.1442834781712738
+    },
+    "MDTUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "BNBUSDT": {
+      "hasPosition": true,
+      "entryPrice": 909.3400000000001,
+      "qty": 5.393,
+      "maxPrice": 909.3400000000001
+    },
+    "WLDUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "HEMIUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "ZECUSDT": {
+      "hasPosition": true,
+      "entryPrice": 360.82473486777803,
+      "qty": 145.286,
+      "maxPrice": 364.69
+    },
+    "LTCUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "ADAUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "MBLUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "KDAUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "FISUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "TURBOUSDT": {
+      "hasPosition": true,
+      "entryPrice": 0.002480158612288217,
+      "qty": 10669766,
+      "maxPrice": 0.002480158612288217
+    }
+  },
+  "activeStrategyId": 2,
+  "lastUpdateTs": 1765205483431
+}
