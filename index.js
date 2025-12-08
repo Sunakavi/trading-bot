@@ -16,8 +16,6 @@ const { initTradeHistory, getStats } = require("./tradeHistory");
 const { loadState, saveState, loadPerformance, savePerformance } = require("./stateManager");
 const { startHttpServer, runtimeConfig } = require("./server");
 
-// שרת API + FRONTEND
-const { startHttpServer } = require("./server");
 
 // =======================
 // GLOBAL STATE

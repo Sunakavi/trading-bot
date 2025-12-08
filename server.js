@@ -121,8 +121,8 @@ app.post("/api/config", (req, res) => {
     config: runtimeConfig
   });
 });
-
-// ייצוא כדי שה-index.js יוכל להשתמש בזה
-module.exports = { startHttpServer, runtimeConfig };
-
+module.exports = {
+  startHttpServer,
+  runtimeConfig
+};
 
