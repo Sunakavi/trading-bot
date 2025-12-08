@@ -5,11 +5,28 @@
     <title>Trading Bot Control Panel</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 20px; }
-      .btn { padding: 8px 14px; margin: 4px; cursor: pointer; }
-      .btn-primary { background: #007bff; color: #fff; border: none; }
-      .btn-danger { background: #dc3545; color: #fff; border: none; }
+      h1 { margin-bottom: 10px; }
+      .section {
+        margin-bottom: 16px;
+        padding: 10px;
+        border: 1px solid #ddd;
+      }
+      .section h2 {
+        margin-top: 0;
+        font-size: 18px;
+      }
+      .btn {
+        padding: 8px 14px;
+        margin: 4px;
+        cursor: pointer;
+        border: none;
+        border-radius: 4px;
+      }
+      .btn-primary { background: #007bff; color: #fff; }
+      .btn-danger { background: #dc3545; color: #fff; }
+      .btn-outline { background: #fff; border: 1px solid #aaa; }
       .log-box {
-        margin-top: 16px;
+        margin-top: 8px;
         padding: 10px;
         border: 1px solid #ccc;
         height: 400px;
@@ -19,33 +36,55 @@
         font-family: monospace;
         font-size: 12px;
       }
-      .status-box {
-        margin-bottom: 10px;
-        padding: 10px;
-        border: 1px solid #ddd;
+      .label {
+        display: inline-block;
+        margin-right: 8px;
       }
+      .row { margin-bottom: 6px; }
     </style>
   </head>
   <body>
     <h1>Trading Bot Control Panel</h1>
 
-    <div class="status-box">
-      <div>Active Strategy: <span id="strategy-span">-</span></div>
-      <div>Kill Switch: <span id="kill-span">false</span></div>
-      <div>Symbols in state: <span id="symbols-span">0</span></div>
-      <div>Equity: <span id="equity-span">-</span></div>
-      <div>PNL %: <span id="pnl-span">-</span></div>
+    <!-- STATUS -->
+    <div class="section">
+      <h2>Status</h2>
+      <div class="row">Active Strategy: <span id="strategy-span">-</span></div>
+      <div class="row">Loop Interval: <span id="interval-span">-</span></div>
+      <div class="row">Kill Switch Pending: <span id="kill-span">false</span></div>
+      <div class="row">Symbols in state: <span id="symbols-span">0</span></div>
+      <div class="row">Equity: <span id="equity-span">-</span></div>
+      <div class="row">PNL %: <span id="pnl-span">-</span></div>
     </div>
 
-    <div>
-      <button class="btn btn-primary" onclick="setStrategy(1)">Strategy 1</button>
-      <button class="btn btn-primary" onclick="setStrategy(2)">Strategy 2</button>
-      <button class="btn btn-primary" onclick="setStrategy(3)">Strategy 3</button>
-      <button class="btn btn-danger" onclick="killSwitch()">KILL SWITCH</button>
+    <!-- SETTINGS -->
+    <div class="section">
+      <h2>Settings</h2>
+
+      <div class="row">
+        <span class="label">Strategy:</span>
+        <label><input type="radio" name="strategy" value="1" onclick="setStrategy(1)" /> 1 (SMA)</label>
+        <label><input type="radio" name="strategy" value="2" onclick="setStrategy(2)" /> 2 (Trend/RSI)</label>
+        <label><input type="radio" name="strategy" value="3" onclick="setStrategy(3)" /> 3 (EMA/ATR)</label>
+      </div>
+
+      <div class="row">
+        <span class="label">Loop interval:</span>
+        <button class="btn btn-outline" onclick="setIntervalMs(60000)">Every 60s</button>
+        <button class="btn btn-outline" onclick="setIntervalMs(300000)">Every 5 min</button>
+        <button class="btn btn-outline" onclick="setIntervalMs(900000)">Every 15 min</button>
+      </div>
+
+      <div class="row">
+        <button class="btn btn-danger" onclick="killSwitch()">SELL ALL NOW</button>
+      </div>
     </div>
 
-    <h2>Logs</h2>
-    <div id="logs" class="log-box"></div>
+    <!-- LOGS -->
+    <div class="section">
+      <h2>Logs</h2>
+      <div id="logs" class="log-box"></div>
+    </div>
 
     <script>
       async function refreshStatus() {
@@ -56,19 +95,47 @@
 
           document.getElementById("strategy-span").textContent =
             data.activeStrategyId;
+          document.getElementById("symbols-span").textContent =
+            data.stateSummary?.symbols ?? 0;
           document.getElementById("kill-span").textContent =
             data.killSwitch ? "true" : "false";
-          document.getElementById("symbols-span").textContent =
-            data.stateSummary.symbols;
 
           if (data.performance && data.performance.lastEquity != null) {
             document.getElementById("equity-span").textContent =
               data.performance.lastEquity.toFixed(2) + " USDT";
           }
-          if (data.performance && data.performance.pnlPct != null) {
+          if (data.performance && data.performance.lastPnlPct != null) {
             document.getElementById("pnl-span").textContent =
-              data.performance.pnlPct.toFixed(2) + " %";
+              data.performance.lastPnlPct.toFixed(2) + " %";
           }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function refreshConfig() {
+        try {
+          const res = await fetch("/api/config");
+          const data = await res.json();
+          if (!data.ok) return;
+
+          const cfg = data.config || {};
+          // אסטרטגיה
+          if (cfg.activeStrategyId) {
+            const radios = document.querySelectorAll('input[name="strategy"]');
+            radios.forEach((r) => {
+              r.checked = Number(r.value) === Number(cfg.activeStrategyId);
+            });
+          }
+
+          // אינטרוול
+          let label = "-";
+          if (cfg.loopIntervalMs === 60000) label = "Every 60s";
+          else if (cfg.loopIntervalMs === 300000) label = "Every 5 min";
+          else if (cfg.loopIntervalMs === 900000) label = "Every 15 min";
+          else if (cfg.loopIntervalMs) label = cfg.loopIntervalMs + " ms";
+
+          document.getElementById("interval-span").textContent = label;
         } catch (e) {
           console.error(e);
         }
@@ -89,12 +156,26 @@
 
       async function setStrategy(id) {
         try {
-          await fetch("/api/strategy", {
+          await fetch("/api/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id }),
+            body: JSON.stringify({ activeStrategyId: id }),
           });
+          refreshConfig();
           refreshStatus();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function setIntervalMs(ms) {
+        try {
+          await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ loopIntervalMs: ms }),
+          });
+          refreshConfig();
         } catch (e) {
           console.error(e);
         }
@@ -113,6 +194,7 @@
       setInterval(refreshStatus, 5000);
       setInterval(refreshLogs, 5000);
       refreshStatus();
+      refreshConfig();
       refreshLogs();
     </script>
   </body>
