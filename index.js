@@ -38,9 +38,6 @@ let SELL_SWITCH = false;
 const KILL_SWITCH = config.KILL_SWITCH;
 let activeStrategyId = 2;
 
-// reset baseline
-let performanceBaseline = INITIAL_CAPITAL;
-let pendingResetBaseline = false;
 
 // shared – זה עובר לשרת API
 const shared = {
@@ -67,16 +64,17 @@ setupKeypressListener(
       return true;
     }
 
-    if (key.shift && key.name === "r") {
+        if (key.shift && key.name === "r") {
       SELL_SWITCH = true;
-      pendingResetBaseline = true;
+      shared.resetFundsRequested = true; // אותו פלג כמו ב-GUI
       log(
         COLORS.PURPLE +
-          "[SYSTEM] RESET BASELINE REQUESTED (Shift+R)" +
+          "[SYSTEM] RESET FUNDS REQUESTED (Shift+R)" +
           COLORS.RESET
       );
       return true;
     }
+
 
     return false;
   },
@@ -125,19 +123,7 @@ async function logPortfolio() {
     log(`[EQUITY] ≈ ${equity.toFixed(2)} ${config.QUOTE}`);
     log("==========================================");
 
-    if (pendingResetBaseline) {
-      performanceBaseline = equity;
-      pendingResetBaseline = false;
-      log(
-        COLORS.PURPLE +
-          `[SYSTEM] PERFORMANCE BASELINE RESET TO ${equity.toFixed(
-            2
-          )} USDT` +
-          COLORS.RESET
-      );
-    }
-
-    logPerformance(equity);
+        logPerformance(equity);
 
     const stats = getStats();
     if (stats.total > 0) {
@@ -157,20 +143,21 @@ async function logPortfolio() {
 }
 
 function logPerformance(equity) {
-  const pnlPct = ((equity - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
+  let perf = loadPerformance();
+  if (!perf) {
+    perf = { initialCapital: INITIAL_CAPITAL, samples: [] };
+  }
+
+  const base = perf.initialCapital || INITIAL_CAPITAL;
+  const pnlPct = ((equity - base) / base) * 100;
 
   log(
-    `[PERFORMANCE] Start=${INITIAL_CAPITAL.toFixed(
+    `[PERFORMANCE] Start=${base.toFixed(
       2
     )} | Equity=${equity.toFixed(2)} | PNL=${pnlPct.toFixed(2)}%`
   );
 
   try {
-    let perf = loadPerformance();
-    if (!perf) {
-      perf = { initialCapital: INITIAL_CAPITAL, samples: [] };
-    }
-
     const ts = Date.now();
     perf.lastEquity = equity;
     perf.lastPnlPct = pnlPct;
@@ -187,16 +174,17 @@ function logPerformance(equity) {
     );
   }
 }
+
 // =======================
 // INTERRUPTIBLE SLEEP – מאפשר לקטוע המתנה אם יש SELL_SWITCH / RESET
 // =======================
 async function interruptibleSleep(ms) {
-  const chunk = 500; // נבדוק כל חצי שנייה
+  const chunk = 500;
   let elapsed = 0;
 
   while (elapsed < ms) {
-    // אם לחצו Shift+S או Shift+R – נצא מיד מההמתנה
-    if (SELL_SWITCH || pendingResetBaseline) {
+    // מספיק לבדוק SELL_SWITCH – גם Shift+R וגם GUI מציתים אותו
+    if (SELL_SWITCH) {
       return;
     }
 
@@ -205,6 +193,36 @@ async function interruptibleSleep(ms) {
     await sleep(step);
     elapsed += step;
   }
+}
+
+async function resetFunds() {
+  log(COLORS.PURPLE + "[RESET] Starting full funds reset…" + COLORS.RESET);
+
+  // DELETE HISTORY
+  const fs = require("fs");
+  fs.writeFileSync("state/history.json", "[]");
+
+  // RESET PERFORMANCE TO 10000
+  savePerformance({
+    initialCapital: 10000,
+    lastEquity: 10000,
+    lastPnlPct: 0,
+    lastUpdateTs: Date.now(),
+    samples: [],
+  });
+
+  // RESET STATE
+  saveState({
+    positions: {},
+    activeStrategyId: 2,
+    lastUpdateTs: Date.now(),
+  });
+
+  log(
+    COLORS.GREEN +
+      "[RESET] Trade history cleared, performance reset to 10000, state cleared." +
+      COLORS.RESET
+  );
 }
 
 // =======================
@@ -259,7 +277,7 @@ async function mainLoop() {
             "[SYSTEM] GLOBAL SELL SWITCH ON" +
             COLORS.RESET
         );
-
+      
         for (const sym of activeSymbols) {
           try {
             await binanceClient.sellMarketAll(sym, config.QUOTE);
@@ -286,7 +304,10 @@ async function mainLoop() {
 
         SELL_SWITCH = false;
         shared.killSwitch = false;
-
+      if (shared.resetFundsRequested) {
+          shared.resetFundsRequested = false;
+          await resetFunds();
+      }
         await logPortfolio();
         const waitSecAfterSell =
           runtimeConfig.loopIntervalMs / 1000;

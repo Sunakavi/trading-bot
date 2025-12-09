@@ -77,12 +77,21 @@ function startHttpServer(shared) {
     res.json({ ok: true, lines });
   });
 
-  // KILL SWITCH – מכירת הכל בסיבוב הבא
+    // KILL SWITCH – מכירת הכל בסיבוב הבא
   app.post("/api/kill", (req, res) => {
     shared.killSwitch = true;
     log("[API] KILL SWITCH activated – will SELL ALL on next loop");
     res.json({ ok: true });
   });
+
+  // RESET FUNDS – GUI BUTTON
+  app.post("/api/resetFunds", (req, res) => {
+    shared.killSwitch = true;
+    shared.resetFundsRequested = true;
+    log("[API] RESET FUNDS requested – will SELL ALL + RESET on next loop");
+    res.json({ ok: true, message: "RESET FUNDS REQUESTED" });
+  });
+
 
   // קבלת קונפיג
   app.get("/api/config", (req, res) => {
