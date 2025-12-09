@@ -54,6 +54,12 @@
       "qty": 92731,
       "maxPrice": 0.0457302110405366
     },
+    "ZECUSDT": {
+      "hasPosition": true,
+      "entryPrice": 409.05481452859345,
+      "qty": 5.176,
+      "maxPrice": 409.06
+    },
     "ACAUSDT": {
       "hasPosition": false,
       "entryPrice": 0,
@@ -67,6 +73,6 @@
       "maxPrice": 0
     }
   },
-  "activeStrategyId": 2,
-  "lastUpdateTs": 1765274608442
+  "activeStrategyId": 1,
+  "lastUpdateTs": 1765275379210
 }

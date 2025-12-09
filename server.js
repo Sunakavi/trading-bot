@@ -8,10 +8,10 @@ const { log } = require("./log");
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfig = {
   activeStrategyId: 2,
-  loopIntervalMs: 900000, // 15 דקות
+  loopIntervalMs: 900000, // 15 דקות (ברירת מחדל)
 };
 
-// לקרוא את שורות הלוג האחרונות
+// קריאת שורות הלוג האחרונות מהקובץ האחרון בתיקיית logs
 function getLatestLogLines(maxLines = 200) {
   try {
     const logDir = path.join(__dirname, "logs");
@@ -20,7 +20,7 @@ function getLatestLogLines(maxLines = 200) {
     const files = fs
       .readdirSync(logDir)
       .filter((f) => f.endsWith(".log"))
-      .sort(); // לפי שם (בד"כ לפי תאריך)
+      .sort(); // בד"כ לפי תאריך בשם הקובץ
 
     if (!files.length) return [];
 
@@ -41,7 +41,7 @@ function startHttpServer(shared) {
   // סטטי – ה-frontend
   app.use(express.static(path.join(__dirname, "public")));
 
-  // סטטוס כללי
+  // ===== API: STATUS =====
   app.get("/api/status", (req, res) => {
     try {
       const state = loadState() || {};
@@ -53,7 +53,8 @@ function startHttpServer(shared) {
 
       res.json({
         ok: true,
-        activeStrategyId: shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
+        activeStrategyId:
+          shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
         killSwitch: shared.killSwitch ?? false,
         stateSummary: {
           symbols: symbolsCount,
@@ -64,6 +65,9 @@ function startHttpServer(shared) {
           lastPnlPct: perf.lastPnlPct ?? null,
           lastUpdateTs: perf.lastUpdateTs ?? null,
         },
+        config: {
+          loopIntervalMs: runtimeConfig.loopIntervalMs,
+        },
       });
     } catch (e) {
       console.error(e);
@@ -71,29 +75,29 @@ function startHttpServer(shared) {
     }
   });
 
-  // לוגים אחרונים
+  // ===== API: LOGS =====
   app.get("/api/logs", (req, res) => {
     const lines = getLatestLogLines(300);
     res.json({ ok: true, lines });
   });
 
-    // KILL SWITCH – מכירת הכל בסיבוב הבא
+  // ===== API: KILL SWITCH (SELL ALL) =====
   app.post("/api/kill", (req, res) => {
     shared.killSwitch = true;
     log("[API] KILL SWITCH activated – will SELL ALL on next loop");
     res.json({ ok: true });
   });
 
-  // RESET FUNDS – GUI BUTTON
+  // ===== API: RESET FUNDS (GUI + Shift+R) =====
   app.post("/api/resetFunds", (req, res) => {
+    // נבצע SELL ALL + resetFunds בלולאת הבוט
     shared.killSwitch = true;
     shared.resetFundsRequested = true;
     log("[API] RESET FUNDS requested – will SELL ALL + RESET on next loop");
     res.json({ ok: true, message: "RESET FUNDS REQUESTED" });
   });
 
-
-  // קבלת קונפיג
+  // ===== API: קבלת קונפיג =====
   app.get("/api/config", (req, res) => {
     res.json({
       ok: true,
@@ -101,7 +105,7 @@ function startHttpServer(shared) {
     });
   });
 
-  // עדכון קונפיג (אסטרטגיה + אינטרוול)
+  // ===== API: עדכון קונפיג (אסטרטגיה + אינטרוול) =====
   app.post("/api/config", (req, res) => {
     const body = req.body;
 
@@ -109,7 +113,9 @@ function startHttpServer(shared) {
     if (body.activeStrategyId !== undefined) {
       const id = Number(body.activeStrategyId);
       if (![1, 2, 3].includes(id)) {
-        return res.status(400).json({ ok: false, error: "Invalid strategy ID" });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid strategy ID" });
       }
       runtimeConfig.activeStrategyId = id;
       shared.activeStrategyId = id;
@@ -121,7 +127,9 @@ function startHttpServer(shared) {
       const allowed = [60000, 300000, 900000]; // 60s, 5m, 15m
       const val = Number(body.loopIntervalMs);
       if (!allowed.includes(val)) {
-        return res.status(400).json({ ok: false, error: "Invalid loop interval" });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid loop interval" });
       }
       runtimeConfig.loopIntervalMs = val;
       log(`[API] Interval set to ${val} ms`);
