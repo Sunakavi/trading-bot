@@ -84,6 +84,7 @@ function startHttpServer(shared) {
   // ===== API: KILL SWITCH (SELL ALL) =====
   app.post("/api/kill", (req, res) => {
     shared.killSwitch = true;
+    shared.interruptNow = true; // חדש – שובר את השינה
     log("[API] KILL SWITCH activated – will SELL ALL on next loop");
     res.json({ ok: true });
   });
@@ -93,6 +94,7 @@ function startHttpServer(shared) {
     // נבצע SELL ALL + resetFunds בלולאת הבוט
     shared.killSwitch = true;
     shared.resetFundsRequested = true;
+    shared.interruptNow = true; // חדש – שובר את השינה
     log("[API] RESET FUNDS requested – will SELL ALL + RESET on next loop");
     res.json({ ok: true, message: "RESET FUNDS REQUESTED" });
   });
@@ -119,6 +121,7 @@ function startHttpServer(shared) {
       }
       runtimeConfig.activeStrategyId = id;
       shared.activeStrategyId = id;
+      shared.interruptNow = true; // חדש – שובר את השינה
       log(`[API] Strategy set to ${id}`);
     }
 
@@ -132,6 +135,7 @@ function startHttpServer(shared) {
           .json({ ok: false, error: "Invalid loop interval" });
       }
       runtimeConfig.loopIntervalMs = val;
+      shared.interruptNow = true; // חדש – שובר את השינה
       log(`[API] Interval set to ${val} ms`);
     }
 

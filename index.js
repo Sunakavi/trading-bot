@@ -43,7 +43,10 @@ let activeStrategyId = 2;
 const shared = {
   activeStrategyId: activeStrategyId,
   killSwitch: false,
+  resetFundsRequested: false,
+  interruptNow: false, // חדש – בקשה לעצור שינה
 };
+
 
 // =======================
 // INITIAL SETUP
@@ -56,6 +59,7 @@ setupKeypressListener(
   (key) => {
     if (key.shift && key.name === "s") {
       SELL_SWITCH = true;
+      shared.interruptNow = true; // עצור שינה
       log(
         COLORS.PURPLE +
           "[SYSTEM] SELL SWITCH ACTIVATED (Shift+S)" +
@@ -64,9 +68,10 @@ setupKeypressListener(
       return true;
     }
 
-        if (key.shift && key.name === "r") {
+    if (key.shift && key.name === "r") {
       SELL_SWITCH = true;
-      shared.resetFundsRequested = true; // אותו פלג כמו ב-GUI
+      shared.resetFundsRequested = true; // נבצע resetFunds בלולאה
+      shared.interruptNow = true;        // עצור שינה מייד
       log(
         COLORS.PURPLE +
           "[SYSTEM] RESET FUNDS REQUESTED (Shift+R)" +
@@ -75,7 +80,6 @@ setupKeypressListener(
       return true;
     }
 
-
     return false;
   },
   (newId) => {
@@ -83,6 +87,7 @@ setupKeypressListener(
     runtimeConfig.activeStrategyId = newId; // סינכרון גם ל-API
   }
 );
+
 
 // Binance Client
 const binanceClient = new BinanceClient(
@@ -179,12 +184,17 @@ function logPerformance(equity) {
 // INTERRUPTIBLE SLEEP – מאפשר לקטוע המתנה אם יש SELL_SWITCH / RESET
 // =======================
 async function interruptibleSleep(ms) {
-  const chunk = 500;
+  const chunk = 500; // נבדוק כל חצי שנייה
   let elapsed = 0;
 
   while (elapsed < ms) {
-    // מספיק לבדוק SELL_SWITCH – גם Shift+R וגם GUI מציתים אותו
-    if (SELL_SWITCH) {
+    // כל שינוי מה-GUI / מקלדת שמצדיק לופ חדש – שובר את השינה
+    if (
+      SELL_SWITCH ||
+      shared.killSwitch ||
+      shared.resetFundsRequested ||
+      shared.interruptNow
+    ) {
       return;
     }
 
@@ -194,6 +204,7 @@ async function interruptibleSleep(ms) {
     elapsed += step;
   }
 }
+
 
 async function resetFunds() {
   log(COLORS.PURPLE + "[RESET] Starting full funds reset…" + COLORS.RESET);
@@ -260,7 +271,7 @@ async function mainLoop() {
     while (true) {
       // עדכון נתונים שנגישים לשרת ה-API
       shared.activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
-
+      shared.interruptNow = false; // מתחילים איטרציה חדשה – מנקים דגל
       log(
         COLORS.PURPLE +
           `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` +
