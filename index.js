@@ -6,16 +6,26 @@ require("dotenv").config();
 // =======================
 // IMPORTS
 // =======================
-const { COLORS, config, INITIAL_CAPITAL, LOOP_SLEEP_MS, CANDLE_RED_TRIGGER_PCT } = require("./config");
+const {
+  COLORS,
+  config,
+  INITIAL_CAPITAL,
+  LOOP_SLEEP_MS,
+  CANDLE_RED_TRIGGER_PCT,
+} = require("./config");
 const { log, initLogSystem } = require("./log");
 const { sleep } = require("./utils");
 const { BinanceClient } = require("./binanceClient");
 const { runSymbolStrategy, initPositions } = require("./strategy");
 const { setupKeypressListener } = require("./input");
 const { initTradeHistory, getStats } = require("./tradeHistory");
-const { loadState, saveState, loadPerformance, savePerformance } = require("./stateManager");
+const {
+  loadState,
+  saveState,
+  loadPerformance,
+  savePerformance,
+} = require("./stateManager");
 const { startHttpServer, runtimeConfig } = require("./server");
-
 
 // =======================
 // GLOBAL STATE
@@ -49,14 +59,22 @@ setupKeypressListener(
   (key) => {
     if (key.shift && key.name === "s") {
       SELL_SWITCH = true;
-      log(COLORS.PURPLE + "[SYSTEM] SELL SWITCH ACTIVATED (Shift+S)" + COLORS.RESET);
+      log(
+        COLORS.PURPLE +
+          "[SYSTEM] SELL SWITCH ACTIVATED (Shift+S)" +
+          COLORS.RESET
+      );
       return true;
     }
 
     if (key.shift && key.name === "r") {
       SELL_SWITCH = true;
       pendingResetBaseline = true;
-      log(COLORS.PURPLE + "[SYSTEM] RESET BASELINE REQUESTED (Shift+R)" + COLORS.RESET);
+      log(
+        COLORS.PURPLE +
+          "[SYSTEM] RESET BASELINE REQUESTED (Shift+R)" +
+          COLORS.RESET
+      );
       return true;
     }
 
@@ -64,6 +82,7 @@ setupKeypressListener(
   },
   (newId) => {
     activeStrategyId = newId;
+    runtimeConfig.activeStrategyId = newId; // סינכרון גם ל-API
   }
 );
 
@@ -95,7 +114,11 @@ async function logPortfolio() {
       const price = lastPrices[sym] || 0;
       coinsValue += price * totalBase;
 
-      log(`[${base}] amount=${totalBase.toFixed(6)} ≈ ${(price * totalBase).toFixed(2)} ${config.QUOTE}`);
+      log(
+        `[${base}] amount=${totalBase.toFixed(6)} ≈ ${(price * totalBase).toFixed(
+          2
+        )} ${config.QUOTE}`
+      );
     }
 
     const equity = totalUSDT + coinsValue;
@@ -105,7 +128,13 @@ async function logPortfolio() {
     if (pendingResetBaseline) {
       performanceBaseline = equity;
       pendingResetBaseline = false;
-      log(COLORS.PURPLE + `[SYSTEM] PERFORMANCE BASELINE RESET TO ${equity.toFixed(2)} USDT` + COLORS.RESET);
+      log(
+        COLORS.PURPLE +
+          `[SYSTEM] PERFORMANCE BASELINE RESET TO ${equity.toFixed(
+            2
+          )} USDT` +
+          COLORS.RESET
+      );
     }
 
     logPerformance(equity);
@@ -113,17 +142,28 @@ async function logPortfolio() {
     const stats = getStats();
     if (stats.total > 0) {
       const avgPct = stats.sumPnLPct / stats.total;
-      log(`[TRADES] total=${stats.total}, wins=${stats.wins}, losses=${stats.losses}, avg=${avgPct.toFixed(2)}%`);
+      log(
+        `[TRADES] total=${stats.total}, wins=${stats.wins}, losses=${stats.losses}, avg=${avgPct.toFixed(
+          2
+        )}%`
+      );
     }
   } catch (err) {
-    log(COLORS.RED + "[PORTFOLIO] Error:" + COLORS.RESET, err.response?.data || err.message);
+    log(
+      COLORS.RED + "[PORTFOLIO] Error:" + COLORS.RESET,
+      err.response?.data || err.message
+    );
   }
 }
 
 function logPerformance(equity) {
   const pnlPct = ((equity - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
 
-  log(`[PERFORMANCE] Start=${INITIAL_CAPITAL.toFixed(2)} | Equity=${equity.toFixed(2)} | PNL=${pnlPct.toFixed(2)}%`);
+  log(
+    `[PERFORMANCE] Start=${INITIAL_CAPITAL.toFixed(
+      2
+    )} | Equity=${equity.toFixed(2)} | PNL=${pnlPct.toFixed(2)}%`
+  );
 
   try {
     let perf = loadPerformance();
@@ -139,7 +179,31 @@ function logPerformance(equity) {
 
     savePerformance(perf);
   } catch (err) {
-    log(COLORS.YELLOW + "[PERFORMANCE] Persist failed:" + COLORS.RESET, err.message);
+    log(
+      COLORS.YELLOW +
+        "[PERFORMANCE] Persist failed:" +
+        COLORS.RESET,
+      err.message
+    );
+  }
+}
+// =======================
+// INTERRUPTIBLE SLEEP – מאפשר לקטוע המתנה אם יש SELL_SWITCH / RESET
+// =======================
+async function interruptibleSleep(ms) {
+  const chunk = 500; // נבדוק כל חצי שנייה
+  let elapsed = 0;
+
+  while (elapsed < ms) {
+    // אם לחצו Shift+S או Shift+R – נצא מיד מההמתנה
+    if (SELL_SWITCH || pendingResetBaseline) {
+      return;
+    }
+
+    const remaining = ms - elapsed;
+    const step = Math.min(chunk, remaining);
+    await sleep(step);
+    elapsed += step;
   }
 }
 
@@ -150,14 +214,16 @@ async function mainLoop() {
   try {
     log(COLORS.PURPLE + "Starting bot..." + COLORS.RESET);
 
+    // בחירת סימלים
     activeSymbols = await binanceClient.fetchTopSymbols(config);
     positions = initPositions(activeSymbols);
 
+    // טעינת state מהדיסק (ללא runtimeConfig בפנים)
     const persisted = loadState();
     if (persisted) {
-      // לטעון לפי המבנה האמיתי של state.json
       if (persisted.activeStrategyId !== undefined) {
         runtimeConfig.activeStrategyId = persisted.activeStrategyId;
+        activeStrategyId = persisted.activeStrategyId;
       }
 
       if (persisted.positions) {
@@ -166,32 +232,55 @@ async function mainLoop() {
         }
       }
 
-      log(COLORS.PURPLE + "[STATE] Restored previous state" + COLORS.RESET);
+      log(
+        COLORS.PURPLE +
+          "[STATE] Restored previous state" +
+          COLORS.RESET
+      );
     }
 
-
     while (true) {
-      // עדכון ל-API
-      // עדכון ל-API (שדה נכון)
-      shared.activeStrategyId = runtimeConfig.activeStrategyId;
+      // עדכון נתונים שנגישים לשרת ה-API
+      shared.activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
 
-
-      log(COLORS.PURPLE + `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` + COLORS.RESET);
+      log(
+        COLORS.PURPLE +
+          `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` +
+          COLORS.RESET
+      );
 
       // אם ה-API ביקש KILL
       if (shared.killSwitch) SELL_SWITCH = true;
 
-      // SELL ALL
+      // SELL ALL (גלובלי)
       if (SELL_SWITCH) {
-        log(COLORS.PURPLE + "[SYSTEM] GLOBAL SELL SWITCH ON" + COLORS.RESET);
+        log(
+          COLORS.PURPLE +
+            "[SYSTEM] GLOBAL SELL SWITCH ON" +
+            COLORS.RESET
+        );
 
         for (const sym of activeSymbols) {
           try {
             await binanceClient.sellMarketAll(sym, config.QUOTE);
-            positions[sym] = { hasPosition: false, entryPrice: 0, qty: 0, maxPrice: 0 };
-            log(COLORS.GREEN + `[${sym}] SOLD (GLOBAL)` + COLORS.RESET);
+            positions[sym] = {
+              hasPosition: false,
+              entryPrice: 0,
+              qty: 0,
+              maxPrice: 0,
+            };
+            log(
+              COLORS.GREEN +
+                `[${sym}] SOLD (GLOBAL)` +
+                COLORS.RESET
+            );
           } catch (e) {
-            log(COLORS.RED + `[${sym}] SELL ERROR:` + COLORS.RESET, e.response?.data || e.message);
+            log(
+              COLORS.RED +
+                `[${sym}] SELL ERROR:` +
+                COLORS.RESET,
+              e.response?.data || e.message
+            );
           }
         }
 
@@ -199,11 +288,16 @@ async function mainLoop() {
         shared.killSwitch = false;
 
         await logPortfolio();
+        const waitSecAfterSell =
+          runtimeConfig.loopIntervalMs / 1000;
+        log(
+          `---- wait ${waitSecAfterSell.toFixed(0)} sec ----`
+        );
         await sleep(runtimeConfig.loopIntervalMs);
         continue;
       }
 
-      // רגיל – מריץ אסטרטגיה
+      // רגיל – מריץ אסטרטגיה על כל סימבול
       for (const sym of activeSymbols) {
         await runSymbolStrategy(
           sym,
@@ -220,17 +314,28 @@ async function mainLoop() {
 
       await logPortfolio();
 
-      saveState({
-        positions,
-        activeStrategyId,
-        lastUpdateTs: Date.now(),
-      });
+      // לוודא ש-activeStrategyId מסונכרן לפני שמירה ל-state
+      activeStrategyId = runtimeConfig.activeStrategyId;
 
-      log(`---- wait ${(LOOP_SLEEP_MS / 1000).toFixed(0)} sec ----`);
-      await sleep(runtimeConfig.loopIntervalMs);
+     saveState({
+  positions,
+  activeStrategyId,
+  lastUpdateTs: Date.now(),
+});
+
+// לוג לפי האינטרוול החי
+const waitSec = runtimeConfig.loopIntervalMs / 1000;
+log(`---- wait ${waitSec.toFixed(0)} sec ----`);
+
+// המתנה שניתנת לקטיעה ע"י Shift+S / Shift+R
+await interruptibleSleep(runtimeConfig.loopIntervalMs);
+
     }
   } catch (err) {
-    log(COLORS.RED + "FATAL ERROR in mainLoop:" + COLORS.RESET, err.message);
+    log(
+      COLORS.RED + "FATAL ERROR in mainLoop:" + COLORS.RESET,
+      err.message
+    );
   }
 }
 

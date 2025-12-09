@@ -54,6 +54,12 @@
       "qty": 0,
       "maxPrice": 0
     },
+    "BCHUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
     "USTCUSDT": {
       "hasPosition": false,
       "entryPrice": 0,
@@ -122,5 +128,5 @@
     }
   },
   "activeStrategyId": 2,
-  "lastUpdateTs": 1765268103947
+  "lastUpdateTs": 1765270174902
 }
