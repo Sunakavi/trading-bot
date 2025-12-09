@@ -155,20 +155,26 @@ async function mainLoop() {
 
     const persisted = loadState();
     if (persisted) {
-      if (persisted.runtimeConfig.activeStrategyId !== undefined) {
-        runtimeConfig.activeStrategyId = persisted.runtimeConfig.activeStrategyId;
+      // לטעון לפי המבנה האמיתי של state.json
+      if (persisted.activeStrategyId !== undefined) {
+        runtimeConfig.activeStrategyId = persisted.activeStrategyId;
       }
+
       if (persisted.positions) {
         for (const sym of Object.keys(persisted.positions)) {
           positions[sym] = persisted.positions[sym];
         }
       }
+
       log(COLORS.PURPLE + "[STATE] Restored previous state" + COLORS.RESET);
     }
 
+
     while (true) {
       // עדכון ל-API
-      shared.runtimeConfig.activeStrategyId = runtimeConfig.activeStrategyId;
+      // עדכון ל-API (שדה נכון)
+      shared.activeStrategyId = runtimeConfig.activeStrategyId;
+
 
       log(COLORS.PURPLE + `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` + COLORS.RESET);
 

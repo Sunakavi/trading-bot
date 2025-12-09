@@ -24,29 +24,47 @@
       "qty": 9357.7,
       "maxPrice": 2.0959999999999996
     },
-    "GLMRUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
-    },
     "DOGEUSDT": {
       "hasPosition": true,
       "entryPrice": 0.1442834781712738,
       "qty": 67938,
       "maxPrice": 0.1442834781712738
     },
-    "MDTUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
-    },
     "BNBUSDT": {
       "hasPosition": true,
       "entryPrice": 909.3400000000001,
       "qty": 5.393,
       "maxPrice": 909.3400000000001
+    },
+    "GLMRUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "LUNAUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "ACAUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "USTCUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "MDTUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
     },
     "WLDUSDT": {
       "hasPosition": false,
@@ -104,5 +122,5 @@
     }
   },
   "activeStrategyId": 2,
-  "lastUpdateTs": 1765205483431
+  "lastUpdateTs": 1765268103947
 }
