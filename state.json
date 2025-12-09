@@ -48,19 +48,25 @@
       "qty": 0,
       "maxPrice": 0
     },
-    "BCHUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
-    },
     "PHAUSDT": {
       "hasPosition": true,
       "entryPrice": 0.0457302110405366,
       "qty": 92731,
       "maxPrice": 0.0457302110405366
+    },
+    "ACAUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "BCHUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
     }
   },
   "activeStrategyId": 2,
-  "lastUpdateTs": 1765273750864
+  "lastUpdateTs": 1765274608442
 }

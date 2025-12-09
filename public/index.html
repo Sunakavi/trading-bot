@@ -1,206 +1,431 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Trading Bot Control Panel</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 20px; }
-      h1 { margin-bottom: 10px; }
-      .section {
-        margin-bottom: 16px;
-        padding: 10px;
-        border: 1px solid #ddd;
-      }
-      .section h2 {
-        margin-top: 0;
-        font-size: 18px;
-      }
-      .btn {
-        padding: 8px 14px;
-        margin: 4px;
-        cursor: pointer;
-        border: none;
-        border-radius: 4px;
-      }
-      .btn-primary { background: #007bff; color: #fff; }
-      .btn-danger { background: #dc3545; color: #fff; }
-      .btn-outline { background: #fff; border: 1px solid #aaa; }
-      .log-box {
-        margin-top: 8px;
-        padding: 10px;
-        border: 1px solid #ccc;
-        height: 400px;
-        overflow-y: scroll;
-        background: #111;
-        color: #0f0;
-        font-family: monospace;
-        font-size: 12px;
-      }
-      .label {
-        display: inline-block;
-        margin-right: 8px;
-      }
-      .row { margin-bottom: 6px; }
-    </style>
-  </head>
-  <body>
-    <h1>Trading Bot Control Panel</h1>
+<head>
+  <meta charset="UTF-8" />
+  <title>Crypto Bot Control Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111827;
+      color: #e5e7eb;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      color: #f9fafb;
+    }
+    .subtitle {
+      margin-bottom: 20px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
 
-    <!-- STATUS -->
-    <div class="section">
-      <h2>Status</h2>
-      <div class="row">Active Strategy: <span id="strategy-span">-</span></div>
-      <div class="row">Loop Interval: <span id="interval-span">-</span></div>
-      <div class="row">Kill Switch Pending: <span id="kill-span">false</span></div>
-      <div class="row">Symbols in state: <span id="symbols-span">0</span></div>
-      <div class="row">Equity: <span id="equity-span">-</span></div>
-      <div class="row">PNL %: <span id="pnl-span">-</span></div>
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: #1f2933;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 0 0 1px #111827;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      color: #f9fafb;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .row + .row {
+      margin-top: 6px;
+    }
+    .label {
+      min-width: 110px;
+      font-size: 14px;
+      color: #9ca3af;
+    }
+    .value {
+      font-size: 14px;
+      color: #e5e7eb;
+      font-weight: 500;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-left: 8px;
+    }
+    .badge-green {
+      background: #064e3b;
+      color: #6ee7b7;
+    }
+    .badge-red {
+      background: #7f1d1d;
+      color: #fecaca;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-right: 6px;
+      margin-top: 4px;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .btn:active {
+      transform: translateY(1px);
+    }
+    .btn-primary {
+      background: #2563eb;
+      color: #f9fafb;
+    }
+    .btn-outline {
+      background: transparent;
+      color: #e5e7eb;
+      border: 1px solid #4b5563;
+    }
+    .btn-danger {
+      background: #b91c1c;
+      color: #fee2e2;
+    }
+    .btn-small {
+      font-size: 12px;
+      padding: 4px 10px;
+    }
+
+    .status-line {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+
+    /* LOG AREA LIKE TERMINAL */
+    .log-container {
+      background: #000000;
+      border-radius: 8px;
+      padding: 8px 10px;
+      border: 1px solid #4b5563;
+      height: 520px;
+      overflow-y: auto;
+      font-family: "Consolas", "SF Mono", "Menlo", "Monaco", monospace;
+      font-size: 12px;
+      line-height: 1.3;
+      color: #d1d5db;
+      white-space: pre; /* שומר על הפורמט בדיוק כמו בטרמינל */
+    }
+
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .log-title {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: #111827;
+      color: #9ca3af;
+      border: 1px solid #4b5563;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Crypto Bot Control Panel</h1>
+    <div class="subtitle">
+      Live control over strategy, interval, kill switch and reset funds.  
+      Logs are shown exactly as in the terminal.
     </div>
 
-    <!-- SETTINGS -->
-    <div class="section">
-      <h2>Settings</h2>
+    <div class="grid">
+      <!-- LEFT: STATUS + CONTROLS -->
+      <div class="card">
+        <h2>Status & Controls</h2>
 
-      <div class="row">
-        <span class="label">Strategy:</span>
-        <label><input type="radio" name="strategy" value="1" onclick="setStrategy(1)" /> 1 (SMA)</label>
-        <label><input type="radio" name="strategy" value="2" onclick="setStrategy(2)" /> 2 (Trend/RSI)</label>
-        <label><input type="radio" name="strategy" value="3" onclick="setStrategy(3)" /> 3 (EMA/ATR)</label>
+        <!-- STATUS -->
+        <div class="row">
+          <span class="label">Strategy:</span>
+          <span class="value">
+            <span id="statusStrategy">–</span>
+          </span>
+        </div>
+        <div class="row">
+          <span class="label">Interval:</span>
+          <span class="value"><span id="statusInterval">–</span></span>
+        </div>
+        <div class="row">
+          <span class="label">Last Equity:</span>
+          <span class="value">
+            <span id="statusEquity">–</span>
+          </span>
+        </div>
+        <div class="row">
+          <span class="label">Last PNL:</span>
+          <span class="value">
+            <span id="statusPnl">–</span>
+          </span>
+        </div>
+        <div class="row">
+          <span class="label">Kill switch:</span>
+          <span class="value">
+            <span id="statusKill">OFF</span>
+            <span id="killBadge" class="badge badge-green">Inactive</span>
+          </span>
+        </div>
+        <div class="status-line" id="statusUpdated">Last update: –</div>
+
+        <hr style="border: none; border-top: 1px solid #374151; margin: 10px 0;" />
+
+        <!-- STRATEGY SELECTION -->
+        <div class="row">
+          <span class="label">Strategy:</span>
+          <div>
+            <button class="btn btn-outline btn-small" onclick="setStrategy(1)">1 – Golden Cross</button>
+            <button class="btn btn-outline btn-small" onclick="setStrategy(2)">2 – Trend/Pullback</button>
+            <button class="btn btn-outline btn-small" onclick="setStrategy(3)">3 – EMA + ATR</button>
+          </div>
+        </div>
+        <div class="status-line" id="strategyStatus"></div>
+
+        <!-- INTERVAL -->
+        <div class="row" style="margin-top: 8px;">
+          <span class="label">Loop interval:</span>
+          <div>
+            <button class="btn btn-outline btn-small" onclick="setIntervalMs(60000)">Every 60s</button>
+            <button class="btn btn-outline btn-small" onclick="setIntervalMs(300000)">Every 5 min</button>
+            <button class="btn btn-outline btn-small" onclick="setIntervalMs(900000)">Every 15 min</button>
+          </div>
+        </div>
+        <div class="status-line" id="intervalStatus"></div>
+
+        <!-- SELL & RESET -->
+        <div class="row" style="margin-top: 10px;">
+          <span class="label">Actions:</span>
+          <div>
+            <button class="btn btn-danger btn-small" onclick="killSwitch()">SELL ALL NOW</button>
+            <button id="resetFundsBtn" class="btn btn-outline btn-small" style="margin-left: 6px;">
+              RESET FUNDS (10,000 USDT)
+            </button>
+          </div>
+        </div>
+        <div class="status-line" id="resetFundsStatus"></div>
       </div>
 
-      <div class="row">
-  <span class="label">Loop interval:</span>
-  <button class="btn btn-outline" onclick="setIntervalMs(60000)">Every 60s</button>
-  <button class="btn btn-outline" onclick="setIntervalMs(300000)">Every 5 min</button>
-  <button class="btn btn-outline" onclick="setIntervalMs(900000)">Every 15 min</button>
-</div>
-
-<div class="row">
-  <button class="btn btn-danger" onclick="killSwitch()">SELL ALL NOW</button>
-
-  <button id="resetFundsBtn" class="btn btn-outline" style="margin-left: 10px;">
-    RESET FUNDS (10,000 USDT)
-  </button>
-  <span id="resetFundsStatus" style="margin-left: 10px; color: #999;"></span>
-</div>
-</div>
-
-    <!-- LOGS -->
-    <div class="section">
-      <h2>Logs</h2>
-      <div id="logs" class="log-box"></div>
+      <!-- RIGHT: LOG VIEWER -->
+      <div class="card">
+        <div class="log-header">
+          <div class="log-title">Live Logs</div>
+          <div>
+            <span class="pill" id="logStatusPill">Polling every 5s</span>
+          </div>
+        </div>
+        <div id="logContainer" class="log-container">
+          Loading logs...
+        </div>
+      </div>
     </div>
+  </div>
 
-    <script>
-      async function refreshStatus() {
-        try {
-          const res = await fetch("/api/status");
-          const data = await res.json();
-          if (!data.ok) return;
+  <script>
+    const statusEls = {
+      strategy: document.getElementById("statusStrategy"),
+      interval: document.getElementById("statusInterval"),
+      equity: document.getElementById("statusEquity"),
+      pnl: document.getElementById("statusPnl"),
+      kill: document.getElementById("statusKill"),
+      killBadge: document.getElementById("killBadge"),
+      updated: document.getElementById("statusUpdated"),
+    };
 
-          document.getElementById("strategy-span").textContent =
-            data.activeStrategyId;
-          document.getElementById("symbols-span").textContent =
-            data.stateSummary?.symbols ?? 0;
-          document.getElementById("kill-span").textContent =
-            data.killSwitch ? "true" : "false";
+    const strategyStatusEl = document.getElementById("strategyStatus");
+    const intervalStatusEl = document.getElementById("intervalStatus");
+    const resetFundsStatusEl = document.getElementById("resetFundsStatus");
+    const logContainerEl = document.getElementById("logContainer");
+    const logStatusPillEl = document.getElementById("logStatusPill");
 
-          if (data.performance && data.performance.lastEquity != null) {
-            document.getElementById("equity-span").textContent =
-              data.performance.lastEquity.toFixed(2) + " USDT";
+    // --- HELPERS ---
+    function formatTs(ts) {
+      if (!ts) return "–";
+      const d = new Date(ts);
+      return d.toLocaleString();
+    }
+    function formatPnl(p) {
+      if (p === null || p === undefined) return "–";
+      const v = Number(p);
+      if (Number.isNaN(v)) return "–";
+      const sign = v > 0 ? "+" : "";
+      return sign + v.toFixed(2) + "%";
+    }
+
+    // --- STATUS POLLING ---
+    async function fetchStatus() {
+      try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+        if (!data.ok) throw new Error("status not ok");
+
+        const cfg = data;
+        statusEls.strategy.textContent = cfg.activeStrategyId ?? "–";
+
+        const intervalMs = cfg.config?.loopIntervalMs || cfg.loopIntervalMs;
+        if (intervalMs) {
+          statusEls.interval.textContent = (intervalMs / 1000) + " s";
+        } else {
+          statusEls.interval.textContent = "–";
+        }
+
+        if (data.performance) {
+          if (data.performance.lastEquity != null) {
+            statusEls.equity.textContent =
+              data.performance.lastEquity.toFixed
+                ? data.performance.lastEquity.toFixed(2) + " USDT"
+                : Number(data.performance.lastEquity).toFixed(2) + " USDT";
+          } else {
+            statusEls.equity.textContent = "–";
           }
-          if (data.performance && data.performance.lastPnlPct != null) {
-            document.getElementById("pnl-span").textContent =
-              data.performance.lastPnlPct.toFixed(2) + " %";
-          }
-        } catch (e) {
-          console.error(e);
+          statusEls.pnl.textContent = formatPnl(data.performance.lastPnlPct);
         }
-      }
 
-      async function refreshConfig() {
-        try {
-          const res = await fetch("/api/config");
-          const data = await res.json();
-          if (!data.ok) return;
-
-          const cfg = data.config || {};
-          // אסטרטגיה
-          if (cfg.activeStrategyId) {
-            const radios = document.querySelectorAll('input[name="strategy"]');
-            radios.forEach((r) => {
-              r.checked = Number(r.value) === Number(cfg.activeStrategyId);
-            });
-          }
-
-          // אינטרוול
-          let label = "-";
-          if (cfg.loopIntervalMs === 60000) label = "Every 60s";
-          else if (cfg.loopIntervalMs === 300000) label = "Every 5 min";
-          else if (cfg.loopIntervalMs === 900000) label = "Every 15 min";
-          else if (cfg.loopIntervalMs) label = cfg.loopIntervalMs + " ms";
-
-          document.getElementById("interval-span").textContent = label;
-        } catch (e) {
-          console.error(e);
+        const isKill = data.killSwitch === true;
+        statusEls.kill.textContent = isKill ? "ON" : "OFF";
+        if (isKill) {
+          statusEls.killBadge.textContent = "Active";
+          statusEls.killBadge.classList.remove("badge-green");
+          statusEls.killBadge.classList.add("badge-red");
+        } else {
+          statusEls.killBadge.textContent = "Inactive";
+          statusEls.killBadge.classList.remove("badge-red");
+          statusEls.killBadge.classList.add("badge-green");
         }
-      }
 
-      async function refreshLogs() {
-        try {
-          const res = await fetch("/api/logs");
-          const data = await res.json();
-          if (!data.ok) return;
-          const box = document.getElementById("logs");
-          box.textContent = data.lines.join("\n");
-          box.scrollTop = box.scrollHeight;
-        } catch (e) {
-          console.error(e);
+        statusEls.updated.textContent =
+          "Last update: " +
+          formatTs(data.stateSummary?.lastUpdateTs || data.performance?.lastUpdateTs || Date.now());
+      } catch (err) {
+        statusEls.updated.textContent = "Status error: " + err.message;
+      }
+    }
+
+    // --- LOGS POLLING ---
+    async function fetchLogs() {
+      try {
+        const res = await fetch("/api/logs");
+        const data = await res.json();
+        if (!data.ok || !Array.isArray(data.lines)) {
+          throw new Error("invalid log payload");
         }
+        const txt = data.lines.join("\n");
+        logContainerEl.textContent = txt || "(no logs yet)";
+        // auto scroll to bottom
+        logContainerEl.scrollTop = logContainerEl.scrollHeight;
+        logStatusPillEl.textContent = "Last log update: " + new Date().toLocaleTimeString();
+      } catch (err) {
+        logStatusPillEl.textContent = "Log error: " + err.message;
       }
+    }
 
-      async function setStrategy(id) {
-        try {
-          await fetch("/api/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ activeStrategyId: id }),
-          });
-          refreshConfig();
-          refreshStatus();
-        } catch (e) {
-          console.error(e);
-        }
+    // --- CONTROLS ---
+    async function setStrategy(id) {
+      try {
+        strategyStatusEl.textContent = "Sending strategy change...";
+        const res = await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ activeStrategyId: id }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        strategyStatusEl.textContent = "Strategy set to " + id;
+        await fetchStatus();
+      } catch (err) {
+        strategyStatusEl.textContent = "Error: " + err.message;
       }
+    }
 
-      async function setIntervalMs(ms) {
-        try {
-          await fetch("/api/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ loopIntervalMs: ms }),
-          });
-          refreshConfig();
-        } catch (e) {
-          console.error(e);
-        }
+    async function setIntervalMs(ms) {
+      try {
+        intervalStatusEl.textContent = "Sending interval change...";
+        const res = await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loopIntervalMs: ms }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        intervalStatusEl.textContent = "Interval set to " + (ms / 1000) + " sec";
+        await fetchStatus();
+      } catch (err) {
+        intervalStatusEl.textContent = "Error: " + err.message;
       }
+    }
 
-      async function killSwitch() {
-        try {
-          await fetch("/api/kill", { method: "POST" });
-          refreshStatus();
-        } catch (e) {
-          console.error(e);
-        }
+    async function killSwitch() {
+      try {
+        intervalStatusEl.textContent = "Sending SELL ALL...";
+        const res = await fetch("/api/kill", { method: "POST" });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        intervalStatusEl.textContent = "SELL ALL requested";
+      } catch (err) {
+        intervalStatusEl.textContent = "Error: " + err.message;
       }
+    }
 
-      // רענון אוטומטי
-      setInterval(refreshStatus, 5000);
-      setInterval(refreshLogs, 5000);
-      refreshStatus();
-      refreshConfig();
-      refreshLogs();
-    </script>
-  </body>
+    async function resetFundsGui() {
+      try {
+        resetFundsStatusEl.textContent = "Sending RESET FUNDS...";
+        const res = await fetch("/api/resetFunds", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        resetFundsStatusEl.textContent =
+          "→ " + (data.message || "RESET FUNDS REQUESTED");
+      } catch (err) {
+        resetFundsStatusEl.textContent = "Error: " + err.message;
+      }
+    }
+
+    document
+      .getElementById("resetFundsBtn")
+      .addEventListener("click", resetFundsGui);
+
+    // --- INITIAL LOAD ---
+    fetchStatus();
+    fetchLogs();
+
+    // --- POLLERS ---
+    setInterval(fetchStatus, 8000); // status every 8s
+    setInterval(fetchLogs, 5000);   // logs every 5s
+  </script>
+</body>
 </html>
