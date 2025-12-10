@@ -168,6 +168,23 @@
       color: #9ca3af;
       border: 1px solid #4b5563;
     }
+
+    .log-buy {
+      color: #34d399;
+      font-weight: 700;
+    }
+    .log-sell {
+      color: #f87171;
+      font-weight: 700;
+    }
+    .log-tp {
+      color: #fbbf24;
+      font-weight: 700;
+    }
+    .log-sl {
+      color: #c084fc;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -345,18 +362,64 @@
     const logContainerEl = document.getElementById("logContainer");
     const logStatusPillEl = document.getElementById("logStatusPill");
 
+    const exitElems = {
+      slValue: document.getElementById("exitSlValue"),
+      tpValue: document.getElementById("exitTpValue"),
+      trailStartValue: document.getElementById("exitTrailStartValue"),
+      trailDistanceValue: document.getElementById("exitTrailDistanceValue"),
+      candleRedValue: document.getElementById("exitCandleRedValue"),
+
+      slInput: document.getElementById("exitSlInput"),
+      tpInput: document.getElementById("exitTpInput"),
+      trailStartInput: document.getElementById("exitTrailStartInput"),
+      trailDistanceInput: document.getElementById("exitTrailDistanceInput"),
+      candleRedInput: document.getElementById("exitCandleRedInput"),
+    };
+
+    const exitStatusEl = document.getElementById("exitStatus");
+
     // --- HELPERS ---
     function formatTs(ts) {
       if (!ts) return "–";
       const d = new Date(ts);
       return d.toLocaleString();
     }
+
     function formatPnl(p) {
       if (p === null || p === undefined) return "–";
       const v = Number(p);
       if (Number.isNaN(v)) return "–";
       const sign = v > 0 ? "+" : "";
       return sign + v.toFixed(2) + "%";
+    }
+
+    function pctText(v, digits = 2) {
+      return v === null || v === undefined ? "–" : (v * 100).toFixed(digits) + "%";
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function highlightLog(line) {
+      let safe = escapeHtml(line);
+      const highlights = [
+        { regex: /\bBUY\b/g, cls: "log-buy" },
+        { regex: /\bSELL\b/g, cls: "log-sell" },
+        { regex: /\bTP\b/g, cls: "log-tp" },
+        { regex: /\bSL\b/g, cls: "log-sl" },
+      ];
+
+      highlights.forEach(({ regex, cls }) => {
+        safe = safe.replace(regex, (m) => `<span class="${cls}">${m}</span>`);
+      });
+
+      return safe;
     }
 
     // --- STATUS POLLING ---
@@ -370,42 +433,62 @@
         statusEls.strategy.textContent = cfg.activeStrategyId ?? "–";
 
         const intervalMs = cfg.config?.loopIntervalMs || cfg.loopIntervalMs;
-        if (intervalMs) {
-          statusEls.interval.textContent = (intervalMs / 1000) + " s";
-        } else {
-          statusEls.interval.textContent = "–";
-        }
+        statusEls.interval.textContent = intervalMs ? intervalMs / 1000 + " s" : "–";
 
         if (data.performance) {
           if (data.performance.lastEquity != null) {
-            statusEls.equity.textContent =
-              data.performance.lastEquity.toFixed
-                ? data.performance.lastEquity.toFixed(2) + " USDT"
-                : Number(data.performance.lastEquity).toFixed(2) + " USDT";
+            const equity = Number(data.performance.lastEquity);
+            statusEls.equity.textContent = equity.toFixed(2) + " USDT";
           } else {
             statusEls.equity.textContent = "–";
           }
           statusEls.pnl.textContent = formatPnl(data.performance.lastPnlPct);
         }
-                // EXIT CONFIG (SL/TP/TRAIL/CANDLE)
+
         if (data.exitConfig) {
           const ex = data.exitConfig;
 
-          const pct = (v) =>
-            v === null || v === undefined
-              ? "–"
-              : (v * 100).toFixed(2) + "%";
+          exitElems.slValue.textContent = pctText(ex.slPct);
+          exitElems.tpValue.textContent = pctText(ex.tpPct);
+          exitElems.trailStartValue.textContent = pctText(ex.trailStartPct);
+          exitElems.trailDistanceValue.textContent = pctText(ex.trailDistancePct);
+          exitElems.candleRedValue.textContent = pctText(ex.candleRedTriggerPct, 0);
 
-          exitElems.slValue.textContent = pct(ex.slPct);
-          exitElems.tpValue.textContent = pct(ex.tpPct);
-          exitElems.trailStartValue.textContent = pct(ex.trailStartPct);
-          exitElems.trailDistanceValue.textContent = pct(ex.trailDistancePct);
-          exitElems.candleRedValue.textContent =
-            ex.candleRedTriggerPct === null ||
-            ex.candleRedTriggerPct === undefined
-              ? "–"
-              : (ex.candleRedTriggerPct * 100).toFixed(0) + "%";
-              async function updateExitConfig() {
+          // Prefill inputs only if empty, to avoid overwriting user typing
+          if (!exitElems.slInput.value && ex.slPct != null)
+            exitElems.slInput.value = (ex.slPct * 100).toFixed(2);
+          if (!exitElems.tpInput.value && ex.tpPct != null)
+            exitElems.tpInput.value = (ex.tpPct * 100).toFixed(2);
+          if (!exitElems.trailStartInput.value && ex.trailStartPct != null)
+            exitElems.trailStartInput.value = (ex.trailStartPct * 100).toFixed(2);
+          if (!exitElems.trailDistanceInput.value && ex.trailDistancePct != null)
+            exitElems.trailDistanceInput.value = (ex.trailDistancePct * 100).toFixed(2);
+          if (!exitElems.candleRedInput.value && ex.candleRedTriggerPct != null)
+            exitElems.candleRedInput.value = (ex.candleRedTriggerPct * 100).toFixed(0);
+        }
+
+        const isKill = data.killSwitch === true;
+        statusEls.kill.textContent = isKill ? "ON" : "OFF";
+        if (isKill) {
+          statusEls.killBadge.textContent = "Active";
+          statusEls.killBadge.classList.remove("badge-green");
+          statusEls.killBadge.classList.add("badge-red");
+        } else {
+          statusEls.killBadge.textContent = "Inactive";
+          statusEls.killBadge.classList.remove("badge-red");
+          statusEls.killBadge.classList.add("badge-green");
+        }
+
+        statusEls.updated.textContent =
+          "Last update: " +
+          formatTs(data.stateSummary?.lastUpdateTs || data.performance?.lastUpdateTs || Date.now());
+      } catch (err) {
+        statusEls.updated.textContent = "Status error: " + err.message;
+      }
+    }
+
+    // --- EXIT SETTINGS ---
+    async function updateExitConfig() {
       try {
         exitStatusEl.textContent = "Sending EXIT config...";
 
@@ -439,55 +522,6 @@
       }
     }
 
-          // אם אין ערך בקלט – נמלא מהשרת
-          if (!exitElems.slInput.value && ex.slPct != null)
-            exitElems.slInput.value = (ex.slPct * 100).toFixed(2);
-          if (!exitElems.tpInput.value && ex.tpPct != null)
-            exitElems.tpInput.value = (ex.tpPct * 100).toFixed(2);
-          if (!exitElems.trailStartInput.value && ex.trailStartPct != null)
-            exitElems.trailStartInput.value = (ex.trailStartPct * 100).toFixed(2);
-          if (!exitElems.trailDistanceInput.value && ex.trailDistancePct != null)
-            exitElems.trailDistanceInput.value = (ex.trailDistancePct * 100).toFixed(2);
-          if (!exitElems.candleRedInput.value && ex.candleRedTriggerPct != null)
-            exitElems.candleRedInput.value = (ex.candleRedTriggerPct * 100).toFixed(0);
-        }
-
-        const isKill = data.killSwitch === true;
-        statusEls.kill.textContent = isKill ? "ON" : "OFF";
-        if (isKill) {
-          statusEls.killBadge.textContent = "Active";
-          statusEls.killBadge.classList.remove("badge-green");
-          statusEls.killBadge.classList.add("badge-red");
-        } else {
-          statusEls.killBadge.textContent = "Inactive";
-          statusEls.killBadge.classList.remove("badge-red");
-          statusEls.killBadge.classList.add("badge-green");
-        }
-
-        statusEls.updated.textContent =
-          "Last update: " +
-          formatTs(data.stateSummary?.lastUpdateTs || data.performance?.lastUpdateTs || Date.now());
-      } catch (err) {
-        statusEls.updated.textContent = "Status error: " + err.message;
-      }
-          const exitElems = {
-      slValue: document.getElementById("exitSlValue"),
-      tpValue: document.getElementById("exitTpValue"),
-      trailStartValue: document.getElementById("exitTrailStartValue"),
-      trailDistanceValue: document.getElementById("exitTrailDistanceValue"),
-      candleRedValue: document.getElementById("exitCandleRedValue"),
-
-      slInput: document.getElementById("exitSlInput"),
-      tpInput: document.getElementById("exitTpInput"),
-      trailStartInput: document.getElementById("exitTrailStartInput"),
-      trailDistanceInput: document.getElementById("exitTrailDistanceInput"),
-      candleRedInput: document.getElementById("exitCandleRedInput"),
-    };
-
-    const exitStatusEl = document.getElementById("exitStatus");
-
-    }
-
     // --- LOGS POLLING ---
     async function fetchLogs() {
       try {
@@ -496,8 +530,9 @@
         if (!data.ok || !Array.isArray(data.lines)) {
           throw new Error("invalid log payload");
         }
-        const txt = data.lines.join("\n");
-        logContainerEl.textContent = txt || "(no logs yet)";
+
+        const html = (data.lines || []).map((line) => highlightLog(line)).join("<br>");
+        logContainerEl.innerHTML = html || "(no logs yet)";
         // auto scroll to bottom
         logContainerEl.scrollTop = logContainerEl.scrollHeight;
         logStatusPillEl.textContent = "Last log update: " + new Date().toLocaleTimeString();
@@ -534,7 +569,7 @@
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "failed");
-        intervalStatusEl.textContent = "Interval set to " + (ms / 1000) + " sec";
+        intervalStatusEl.textContent = "Interval set to " + ms / 1000 + " sec";
         await fetchStatus();
       } catch (err) {
         intervalStatusEl.textContent = "Error: " + err.message;
@@ -558,17 +593,14 @@
         resetFundsStatusEl.textContent = "Sending RESET FUNDS...";
         const res = await fetch("/api/resetFunds", { method: "POST" });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
-        resetFundsStatusEl.textContent =
-          "→ " + (data.message || "RESET FUNDS REQUESTED");
+        if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+        resetFundsStatusEl.textContent = "→ " + (data.message || "RESET FUNDS REQUESTED");
       } catch (err) {
         resetFundsStatusEl.textContent = "Error: " + err.message;
       }
     }
 
-    document
-      .getElementById("resetFundsBtn")
-      .addEventListener("click", resetFundsGui);
+    document.getElementById("resetFundsBtn").addEventListener("click", resetFundsGui);
 
     // --- INITIAL LOAD ---
     fetchStatus();
@@ -576,7 +608,7 @@
 
     // --- POLLERS ---
     setInterval(fetchStatus, 8000); // status every 8s
-    setInterval(fetchLogs, 5000);   // logs every 5s
+    setInterval(fetchLogs, 5000); // logs every 5s
   </script>
 </body>
 </html>
