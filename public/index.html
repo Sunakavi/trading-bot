@@ -30,6 +30,16 @@
       color: #9ca3af;
       font-size: 14px;
     }
+    .num-input {
+      width: 70px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      border: 1px solid #4b5563;
+      background: #111827;
+      color: #e5e7eb;
+      font-size: 12px;
+      margin-right: 4px;
+    }
 
     .grid {
       display: grid;
@@ -206,6 +216,67 @@
         <div class="status-line" id="statusUpdated">Last update: –</div>
 
         <hr style="border: none; border-top: 1px solid #374151; margin: 10px 0;" />
+            <!-- LEFT: EXIT SETTINGS CARD -->
+      <div class="card" style="margin-top: 12px;">
+        <h2>Exit Settings</h2>
+
+        <!-- ערכים בפועל -->
+        <div class="row">
+          <span class="label">Current SL:</span>
+          <span class="value"><span id="exitSlValue">–</span></span>
+        </div>
+        <div class="row">
+          <span class="label">Current TP:</span>
+          <span class="value"><span id="exitTpValue">–</span></span>
+        </div>
+        <div class="row">
+          <span class="label">Trail Start:</span>
+          <span class="value"><span id="exitTrailStartValue">–</span></span>
+        </div>
+        <div class="row">
+          <span class="label">Trail Distance:</span>
+          <span class="value"><span id="exitTrailDistanceValue">–</span></span>
+        </div>
+        <div class="row">
+          <span class="label">Candle Red:</span>
+          <span class="value"><span id="exitCandleRedValue">–</span></span>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid #374151; margin: 10px 0;" />
+
+        <!-- עריכה דינמית -->
+        <div class="row">
+          <span class="label">Edit (%):</span>
+          <div>
+            <input id="exitSlInput" class="num-input" type="number" step="0.1" min="0.1" max="50" placeholder="SL" />
+            <input id="exitTpInput" class="num-input" type="number" step="0.1" min="0.1" max="100" placeholder="TP" />
+          </div>
+        </div>
+        <div class="row">
+          <span class="label"></span>
+          <div>
+            <input id="exitTrailStartInput" class="num-input" type="number" step="0.1" min="0.1" max="100" placeholder="Trail Start" />
+            <input id="exitTrailDistanceInput" class="num-input" type="number" step="0.1" min="0.1" max="100" placeholder="Trail Dist." />
+          </div>
+        </div>
+        <div class="row">
+          <span class="label">Candle (%):</span>
+          <div>
+            <input id="exitCandleRedInput" class="num-input" type="number" step="1" min="0" max="100" placeholder="Red %" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 8px;">
+          <span class="label"></span>
+          <div>
+            <button class="btn btn-primary btn-small" onclick="updateExitConfig()">
+              UPDATE EXIT
+            </button>
+          </div>
+        </div>
+
+        <div class="status-line" id="exitStatus"></div>
+      </div>
 
         <!-- STRATEGY SELECTION -->
         <div class="row">
@@ -316,6 +387,70 @@
           }
           statusEls.pnl.textContent = formatPnl(data.performance.lastPnlPct);
         }
+                // EXIT CONFIG (SL/TP/TRAIL/CANDLE)
+        if (data.exitConfig) {
+          const ex = data.exitConfig;
+
+          const pct = (v) =>
+            v === null || v === undefined
+              ? "–"
+              : (v * 100).toFixed(2) + "%";
+
+          exitElems.slValue.textContent = pct(ex.slPct);
+          exitElems.tpValue.textContent = pct(ex.tpPct);
+          exitElems.trailStartValue.textContent = pct(ex.trailStartPct);
+          exitElems.trailDistanceValue.textContent = pct(ex.trailDistancePct);
+          exitElems.candleRedValue.textContent =
+            ex.candleRedTriggerPct === null ||
+            ex.candleRedTriggerPct === undefined
+              ? "–"
+              : (ex.candleRedTriggerPct * 100).toFixed(0) + "%";
+              async function updateExitConfig() {
+      try {
+        exitStatusEl.textContent = "Sending EXIT config...";
+
+        const sl = parseFloat(exitElems.slInput.value);
+        const tp = parseFloat(exitElems.tpInput.value);
+        const ts = parseFloat(exitElems.trailStartInput.value);
+        const td = parseFloat(exitElems.trailDistanceInput.value);
+        const cr = parseFloat(exitElems.candleRedInput.value);
+
+        const payload = {};
+
+        if (!Number.isNaN(sl)) payload.slPct = sl / 100.0;
+        if (!Number.isNaN(tp)) payload.tpPct = tp / 100.0;
+        if (!Number.isNaN(ts)) payload.trailStartPct = ts / 100.0;
+        if (!Number.isNaN(td)) payload.trailDistancePct = td / 100.0;
+        if (!Number.isNaN(cr)) payload.candleRedTriggerPct = cr / 100.0;
+
+        const res = await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+
+        exitStatusEl.textContent = "EXIT updated successfully.";
+        await fetchStatus();
+      } catch (err) {
+        exitStatusEl.textContent = "Error: " + err.message;
+      }
+    }
+
+          // אם אין ערך בקלט – נמלא מהשרת
+          if (!exitElems.slInput.value && ex.slPct != null)
+            exitElems.slInput.value = (ex.slPct * 100).toFixed(2);
+          if (!exitElems.tpInput.value && ex.tpPct != null)
+            exitElems.tpInput.value = (ex.tpPct * 100).toFixed(2);
+          if (!exitElems.trailStartInput.value && ex.trailStartPct != null)
+            exitElems.trailStartInput.value = (ex.trailStartPct * 100).toFixed(2);
+          if (!exitElems.trailDistanceInput.value && ex.trailDistancePct != null)
+            exitElems.trailDistanceInput.value = (ex.trailDistancePct * 100).toFixed(2);
+          if (!exitElems.candleRedInput.value && ex.candleRedTriggerPct != null)
+            exitElems.candleRedInput.value = (ex.candleRedTriggerPct * 100).toFixed(0);
+        }
 
         const isKill = data.killSwitch === true;
         statusEls.kill.textContent = isKill ? "ON" : "OFF";
@@ -335,6 +470,22 @@
       } catch (err) {
         statusEls.updated.textContent = "Status error: " + err.message;
       }
+          const exitElems = {
+      slValue: document.getElementById("exitSlValue"),
+      tpValue: document.getElementById("exitTpValue"),
+      trailStartValue: document.getElementById("exitTrailStartValue"),
+      trailDistanceValue: document.getElementById("exitTrailDistanceValue"),
+      candleRedValue: document.getElementById("exitCandleRedValue"),
+
+      slInput: document.getElementById("exitSlInput"),
+      tpInput: document.getElementById("exitTpInput"),
+      trailStartInput: document.getElementById("exitTrailStartInput"),
+      trailDistanceInput: document.getElementById("exitTrailDistanceInput"),
+      candleRedInput: document.getElementById("exitCandleRedInput"),
+    };
+
+    const exitStatusEl = document.getElementById("exitStatus");
+
     }
 
     // --- LOGS POLLING ---

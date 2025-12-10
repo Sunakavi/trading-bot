@@ -4,12 +4,22 @@ const path = require("path");
 const fs = require("fs");
 const { loadState, loadPerformance } = require("./stateManager");
 const { log } = require("./log");
+const { config, CANDLE_RED_TRIGGER_PCT } = require("./config"); 
 
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfig = {
   activeStrategyId: 2,
-  loopIntervalMs: 900000, // 15 דקות (ברירת מחדל)
+  loopIntervalMs: 900000, 
+
+   // EXIT SETTINGS (דיפולט מה-config)
+  SL_PCT: config.SL_PCT,
+  TP_PCT: config.TP_PCT,
+  TRAIL_START_PCT: config.TRAIL_START_PCT,
+  TRAIL_DISTANCE_PCT: config.TRAIL_DISTANCE_PCT,
+  CANDLE_RED_TRIGGER_PCT, // טריגר לנר אדום
 };
+
+
 
 // קריאת שורות הלוג האחרונות מהקובץ האחרון בתיקיית logs
 function getLatestLogLines(maxLines = 200) {
@@ -51,24 +61,32 @@ function startHttpServer(shared) {
         ? Object.keys(state.positions).length
         : 0;
 
-      res.json({
-        ok: true,
-        activeStrategyId:
-          shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
-        killSwitch: shared.killSwitch ?? false,
-        stateSummary: {
-          symbols: symbolsCount,
-          lastUpdateTs: state.lastUpdateTs || null,
-        },
-        performance: {
-          lastEquity: perf.lastEquity ?? null,
-          lastPnlPct: perf.lastPnlPct ?? null,
-          lastUpdateTs: perf.lastUpdateTs ?? null,
-        },
-        config: {
-          loopIntervalMs: runtimeConfig.loopIntervalMs,
-        },
-      });
+        res.json({
+    ok: true,
+    activeStrategyId:
+      shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
+    killSwitch: shared.killSwitch ?? false,
+    stateSummary: {
+      symbols: symbolsCount,
+      lastUpdateTs: state.lastUpdateTs || null,
+    },
+    performance: {
+      lastEquity: perf.lastEquity ?? null,
+      lastPnlPct: perf.lastPnlPct ?? null,
+      lastUpdateTs: perf.lastUpdateTs ?? null,
+    },
+    config: {
+      loopIntervalMs: runtimeConfig.loopIntervalMs,
+    },
+    exitConfig: {
+      slPct: runtimeConfig.SL_PCT,
+      tpPct: runtimeConfig.TP_PCT,
+      trailStartPct: runtimeConfig.TRAIL_START_PCT,
+      trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
+      candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+    },
+  });
+
     } catch (e) {
       console.error(e);
       res.status(500).json({ ok: false, error: "status failed" });
@@ -99,13 +117,20 @@ function startHttpServer(shared) {
     res.json({ ok: true, message: "RESET FUNDS REQUESTED" });
   });
 
-  // ===== API: קבלת קונפיג =====
-  app.get("/api/config", (req, res) => {
-    res.json({
-      ok: true,
-      config: runtimeConfig,
-    });
+ app.get("/api/config", (req, res) => {
+  res.json({
+    ok: true,
+    config: runtimeConfig,
+    exitConfig: {
+      slPct: runtimeConfig.SL_PCT,
+      tpPct: runtimeConfig.TP_PCT,
+      trailStartPct: runtimeConfig.TRAIL_START_PCT,
+      trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
+      candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+    },
   });
+});
+
 
   // ===== API: עדכון קונפיג (אסטרטגיה + אינטרוול) =====
   app.post("/api/config", (req, res) => {
@@ -138,6 +163,73 @@ function startHttpServer(shared) {
       shared.interruptNow = true; // חדש – שובר את השינה
       log(`[API] Interval set to ${val} ms`);
     }
+      // --- EXIT SETTINGS (SL/TP/TRAIL/CANDLE) ---
+  // הערכים נשלחים בדצימל (0.012 = 1.2%)
+
+  // SL_PCT
+  if (body.slPct !== undefined) {
+    const v = Number(body.slPct);
+    if (!(v > 0 && v < 0.5)) {
+      return res.status(400).json({ ok: false, error: "Invalid slPct" });
+    }
+    runtimeConfig.SL_PCT = v;
+    config.SL_PCT = v; // כדי שה-strategy.js יקבל את זה דרך config
+    shared.interruptNow = true;
+    log(`[API] SL_PCT set to ${v}`);
+  }
+
+  // TP_PCT
+  if (body.tpPct !== undefined) {
+    const v = Number(body.tpPct);
+    if (!(v > 0 && v < 1.0)) {
+      return res.status(400).json({ ok: false, error: "Invalid tpPct" });
+    }
+    runtimeConfig.TP_PCT = v;
+    config.TP_PCT = v;
+    shared.interruptNow = true;
+    log(`[API] TP_PCT set to ${v}`);
+  }
+
+  // TRAIL_START_PCT
+  if (body.trailStartPct !== undefined) {
+    const v = Number(body.trailStartPct);
+    if (!(v > 0 && v < 1.0)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid trailStartPct" });
+    }
+    runtimeConfig.TRAIL_START_PCT = v;
+    config.TRAIL_START_PCT = v;
+    shared.interruptNow = true;
+    log(`[API] TRAIL_START_PCT set to ${v}`);
+  }
+
+  // TRAIL_DISTANCE_PCT
+  if (body.trailDistancePct !== undefined) {
+    const v = Number(body.trailDistancePct);
+    if (!(v > 0 && v < 1.0)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid trailDistancePct" });
+    }
+    runtimeConfig.TRAIL_DISTANCE_PCT = v;
+    config.TRAIL_DISTANCE_PCT = v;
+    shared.interruptNow = true;
+    log(`[API] TRAIL_DISTANCE_PCT set to ${v}`);
+  }
+
+  // CANDLE_RED_TRIGGER_PCT
+  if (body.candleRedTriggerPct !== undefined) {
+    const v = Number(body.candleRedTriggerPct);
+    if (!(v >= 0 && v <= 1.0)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid candleRedTriggerPct" });
+    }
+    runtimeConfig.CANDLE_RED_TRIGGER_PCT = v;
+    shared.interruptNow = true;
+    log(`[API] CANDLE_RED_TRIGGER_PCT set to ${v}`);
+  }
 
     res.json({
       ok: true,

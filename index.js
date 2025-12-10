@@ -277,6 +277,13 @@ async function mainLoop() {
           `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` +
           COLORS.RESET
       );
+      // סינכרון ערכי EXIT חיים לתוך config (ש-strategy.js משתמש בו)
+      config.SL_PCT = runtimeConfig.SL_PCT ?? config.SL_PCT;
+      config.TP_PCT = runtimeConfig.TP_PCT ?? config.TP_PCT;
+      config.TRAIL_START_PCT =
+        runtimeConfig.TRAIL_START_PCT ?? config.TRAIL_START_PCT;
+      config.TRAIL_DISTANCE_PCT =
+        runtimeConfig.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT;
 
       // אם ה-API ביקש KILL
       if (shared.killSwitch) SELL_SWITCH = true;
@@ -332,16 +339,17 @@ async function mainLoop() {
       // רגיל – מריץ אסטרטגיה על כל סימבול
       for (const sym of activeSymbols) {
         await runSymbolStrategy(
-          sym,
-          positions,
-          lastPrices,
-          binanceClient,
-          config,
-          KILL_SWITCH,
-          SELL_SWITCH,
-          CANDLE_RED_TRIGGER_PCT,
-          runtimeConfig.activeStrategyId
-        );
+        sym,
+        positions,
+        lastPrices,
+        binanceClient,
+        config,
+        KILL_SWITCH,
+        SELL_SWITCH,
+        runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+        runtimeConfig.activeStrategyId
+      );
+
       }
 
       await logPortfolio();

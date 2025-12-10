@@ -1,10 +1,10 @@
 {
   "positions": {
     "BTCUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
+      "hasPosition": true,
+      "entryPrice": 92544.71,
+      "qty": 0.00045,
+      "maxPrice": 92687.55
     },
     "ETHUSDT": {
       "hasPosition": false,
@@ -13,22 +13,22 @@
       "maxPrice": 0
     },
     "SOLUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
+      "hasPosition": true,
+      "entryPrice": 139.22,
+      "qty": 0.155,
+      "maxPrice": 139.27
     },
     "XRPUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
+      "hasPosition": true,
+      "entryPrice": 2.0899,
+      "qty": 5.2,
+      "maxPrice": 2.0918
     },
     "DOGEUSDT": {
-      "hasPosition": false,
-      "entryPrice": 0,
-      "qty": 0,
-      "maxPrice": 0
+      "hasPosition": true,
+      "entryPrice": 0.14718,
+      "qty": 37,
+      "maxPrice": 0.14741
     },
     "BNBUSDT": {
       "hasPosition": false,
@@ -36,13 +36,31 @@
       "qty": 0,
       "maxPrice": 0
     },
-    "GLMRUSDT": {
+    "LUNAUSDT": {
       "hasPosition": false,
       "entryPrice": 0,
       "qty": 0,
       "maxPrice": 0
     },
-    "LUNAUSDT": {
+    "NILUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "ADAUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "0GUSDT": {
+      "hasPosition": false,
+      "entryPrice": 0,
+      "qty": 0,
+      "maxPrice": 0
+    },
+    "GLMRUSDT": {
       "hasPosition": false,
       "entryPrice": 0,
       "qty": 0,
@@ -74,5 +92,5 @@
     }
   },
   "activeStrategyId": 2,
-  "lastUpdateTs": 1765277090019
+  "lastUpdateTs": 1765345372262
 }
