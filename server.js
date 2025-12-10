@@ -57,15 +57,16 @@ function startHttpServer(shared) {
       const state = loadState() || {};
       const perf = loadPerformance() || {};
 
-      const symbolsCount = state.positions
-        ? Object.keys(state.positions).length
-        : 0;
+    const symbolsCount = state.positions
+      ? Object.keys(state.positions).length
+      : 0;
 
         res.json({
     ok: true,
     activeStrategyId:
       shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
     killSwitch: shared.killSwitch ?? false,
+    botRunning: shared.botRunning !== false,
     stateSummary: {
       symbols: symbolsCount,
       lastUpdateTs: state.lastUpdateTs || null,
@@ -104,6 +105,22 @@ function startHttpServer(shared) {
     shared.killSwitch = true;
     shared.interruptNow = true; // חדש – שובר את השינה
     log("[API] KILL SWITCH activated – will SELL ALL on next loop");
+    res.json({ ok: true });
+  });
+
+  // ===== API: BOT START/STOP =====
+  app.post("/api/bot/start", (req, res) => {
+    shared.botRunning = true;
+    shared.stopRequested = false;
+    shared.interruptNow = true;
+    log("[API] BOT START requested – resuming loop");
+    res.json({ ok: true });
+  });
+
+  app.post("/api/bot/stop", (req, res) => {
+    shared.stopRequested = true;
+    shared.interruptNow = true;
+    log("[API] BOT STOP requested – will pause after persisting state");
     res.json({ ok: true });
   });
 
