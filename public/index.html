@@ -30,6 +30,45 @@
       color: #9ca3af;
       font-size: 14px;
     }
+    .control-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1f2933;
+      border-radius: 8px;
+      padding: 12px 16px;
+      border: 1px solid #111827;
+      margin-bottom: 14px;
+      box-shadow: 0 0 0 1px #111827;
+    }
+    .control-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f9fafb;
+    }
+    .control-note {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .control-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pill-green {
+      background: #064e3b;
+      color: #6ee7b7;
+    }
+    .pill-red {
+      background: #7f1d1d;
+      color: #fecaca;
+    }
     .num-input {
       width: 70px;
       padding: 3px 6px;
@@ -191,9 +230,22 @@
   <div class="container">
     <h1>Crypto Bot Control Panel</h1>
     <div class="subtitle">
-      Live control over strategy, interval, kill switch and reset funds.  
+      Live control over strategy, interval, kill switch and reset funds.
       Logs are shown exactly as in the terminal.
     </div>
+
+    <div class="control-bar">
+      <div class="control-info">
+        <div class="control-title">Bot run control</div>
+        <div class="control-note">Pause safely saves state & performance so you can resume later.</div>
+      </div>
+      <div class="control-actions">
+        <span id="botRunBadge" class="pill pill-green">Running</span>
+        <button id="startBotBtn" class="btn btn-primary btn-small">START BOT</button>
+        <button id="stopBotBtn" class="btn btn-danger btn-small">STOP BOT</button>
+      </div>
+    </div>
+    <div class="status-line" id="botControlStatus"></div>
 
     <div class="grid">
       <!-- LEFT: STATUS + CONTROLS -->
@@ -361,6 +413,10 @@
     const resetFundsStatusEl = document.getElementById("resetFundsStatus");
     const logContainerEl = document.getElementById("logContainer");
     const logStatusPillEl = document.getElementById("logStatusPill");
+    const botControlStatusEl = document.getElementById("botControlStatus");
+    const botRunBadgeEl = document.getElementById("botRunBadge");
+    const startBotBtn = document.getElementById("startBotBtn");
+    const stopBotBtn = document.getElementById("stopBotBtn");
 
     const exitElems = {
       slValue: document.getElementById("exitSlValue"),
@@ -379,6 +435,14 @@
     const exitStatusEl = document.getElementById("exitStatus");
 
     // --- HELPERS ---
+    function setBotRunUi(running) {
+      botRunBadgeEl.textContent = running ? "Running" : "Stopped";
+      botRunBadgeEl.classList.toggle("pill-green", running);
+      botRunBadgeEl.classList.toggle("pill-red", !running);
+      startBotBtn.disabled = running;
+      stopBotBtn.disabled = !running;
+    }
+
     function formatTs(ts) {
       if (!ts) return "–";
       const d = new Date(ts);
@@ -430,6 +494,7 @@
         if (!data.ok) throw new Error("status not ok");
 
         const cfg = data;
+        setBotRunUi(data.botRunning !== false);
         statusEls.strategy.textContent = cfg.activeStrategyId ?? "–";
 
         const intervalMs = cfg.config?.loopIntervalMs || cfg.loopIntervalMs;
@@ -542,6 +607,32 @@
     }
 
     // --- CONTROLS ---
+    async function startBot() {
+      try {
+        botControlStatusEl.textContent = "Starting bot...";
+        const res = await fetch("/api/bot/start", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "failed");
+        botControlStatusEl.textContent = "Bot resumed. Continuing from saved state.";
+        setBotRunUi(true);
+      } catch (err) {
+        botControlStatusEl.textContent = "Error: " + err.message;
+      }
+    }
+
+    async function stopBot() {
+      try {
+        botControlStatusEl.textContent = "Stopping bot after current loop...";
+        const res = await fetch("/api/bot/stop", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "failed");
+        botControlStatusEl.textContent = "Bot will pause after persisting state.";
+        setBotRunUi(false);
+      } catch (err) {
+        botControlStatusEl.textContent = "Error: " + err.message;
+      }
+    }
+
     async function setStrategy(id) {
       try {
         strategyStatusEl.textContent = "Sending strategy change...";
@@ -600,6 +691,8 @@
       }
     }
 
+    startBotBtn.addEventListener("click", startBot);
+    stopBotBtn.addEventListener("click", stopBot);
     document.getElementById("resetFundsBtn").addEventListener("click", resetFundsGui);
 
     // --- INITIAL LOAD ---

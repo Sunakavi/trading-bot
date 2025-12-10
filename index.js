@@ -37,6 +37,7 @@ let lastPrices = {};
 let SELL_SWITCH = false;
 const KILL_SWITCH = config.KILL_SWITCH;
 let activeStrategyId = 2;
+let botRunning = true;
 
 
 // shared – זה עובר לשרת API
@@ -45,6 +46,8 @@ const shared = {
   killSwitch: false,
   resetFundsRequested: false,
   interruptNow: false, // חדש – בקשה לעצור שינה
+  stopRequested: false,
+  botRunning: true,
 };
 
 
@@ -193,7 +196,8 @@ async function interruptibleSleep(ms) {
       SELL_SWITCH ||
       shared.killSwitch ||
       shared.resetFundsRequested ||
-      shared.interruptNow
+      shared.interruptNow ||
+      shared.stopRequested
     ) {
       return;
     }
@@ -269,8 +273,43 @@ async function mainLoop() {
     }
 
     while (true) {
+      botRunning = shared.botRunning;
+
       // עדכון נתונים שנגישים לשרת ה-API
       shared.activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
+      shared.botRunning = botRunning;
+
+      // אם הבוט במצב עצירה – נחכה לחידוש
+      if (!botRunning) {
+        shared.interruptNow = false;
+        await interruptibleSleep(1000);
+        continue;
+      }
+
+      // אם התקבלה בקשה לעצור – נשמור מצב ונעצור
+      if (shared.stopRequested) {
+        log(
+          COLORS.PURPLE +
+            "[SYSTEM] STOP requested – persisting state and pausing bot" +
+            COLORS.RESET
+        );
+
+        await logPortfolio();
+
+        activeStrategyId = runtimeConfig.activeStrategyId;
+        saveState({
+          positions,
+          activeStrategyId,
+          lastUpdateTs: Date.now(),
+        });
+
+        botRunning = false;
+        shared.botRunning = false;
+        shared.stopRequested = false;
+        shared.interruptNow = false;
+        continue;
+      }
+
       shared.interruptNow = false; // מתחילים איטרציה חדשה – מנקים דגל
       log(
         COLORS.PURPLE +
