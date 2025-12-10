@@ -313,6 +313,26 @@
 
         <hr style="border: none; border-top: 1px solid #374151; margin: 10px 0;" />
 
+        <div class="row">
+          <span class="label">Preset sets:</span>
+          <div>
+            <select id="exitPresetSelect" class="num-input" style="width: 240px;">
+              <option value="" selected disabled>Select exit preset...</option>
+              <option value="conservative">1 — Conservative</option>
+              <option value="aggressive-trend">2 — Aggressive Trend</option>
+              <option value="safe-scalping">3 — Safe Scalping</option>
+              <option value="momentum-rider">4 — Momentum Rider</option>
+              <option value="atr-mixed">5 — ATR Mixed (semi-dynamic)</option>
+              <option value="volatility-shield">6 — Volatility Shield</option>
+              <option value="breakout-mode">7 — Breakout Mode</option>
+              <option value="ultra-tight">8 — Ultra Tight</option>
+            </select>
+            <button id="applyExitPresetBtn" class="btn btn-outline btn-small" style="margin-left: 4px;">
+              Apply preset
+            </button>
+          </div>
+        </div>
+
         <!-- עריכה דינמית -->
         <div class="row">
           <span class="label">Edit (%):</span>
@@ -433,6 +453,99 @@
     };
 
     const exitStatusEl = document.getElementById("exitStatus");
+    const exitPresetSelectEl = document.getElementById("exitPresetSelect");
+    const applyExitPresetBtn = document.getElementById("applyExitPresetBtn");
+
+    const exitPresets = [
+      {
+        id: "conservative",
+        label: "1 — Conservative",
+        sl: 1.2,
+        tp: 2.4,
+        trailStart: 1.2,
+        trailDistance: 0.6,
+        candleRed: 60,
+      },
+      {
+        id: "aggressive-trend",
+        label: "2 — Aggressive Trend",
+        sl: 0.9,
+        tp: 3.2,
+        trailStart: 1.6,
+        trailDistance: 0.8,
+        candleRed: 40,
+      },
+      {
+        id: "safe-scalping",
+        label: "3 — Safe Scalping",
+        sl: 0.6,
+        tp: 1.2,
+        trailStart: 0.8,
+        trailDistance: 0.4,
+        candleRed: 50,
+      },
+      {
+        id: "momentum-rider",
+        label: "4 — Momentum Rider",
+        sl: 1.0,
+        tp: 4.0,
+        trailStart: 2.0,
+        trailDistance: 1.0,
+        candleRed: 30,
+      },
+      {
+        id: "atr-mixed",
+        label: "5 — ATR Mixed (semi-dynamic)",
+        sl: 0.6,
+        tp: 1.4,
+        trailStart: 2.0,
+        trailDistance: 1.0,
+        candleRed: 40,
+      },
+      {
+        id: "volatility-shield",
+        label: "6 — Volatility Shield",
+        sl: 1.5,
+        tp: 2.5,
+        trailStart: 2.2,
+        trailDistance: 1.2,
+        candleRed: 70,
+      },
+      {
+        id: "breakout-mode",
+        label: "7 — Breakout Mode",
+        sl: 0.8,
+        tp: 5.0,
+        trailStart: 3.0,
+        trailDistance: 1.5,
+        candleRed: 20,
+      },
+      {
+        id: "ultra-tight",
+        label: "8 — Ultra Tight",
+        sl: 0.4,
+        tp: 0.8,
+        trailStart: 0.5,
+        trailDistance: 0.25,
+        candleRed: 60,
+      },
+    ];
+
+    function applyExitPreset(id) {
+      const preset = exitPresets.find((p) => p.id === id);
+      if (!preset) {
+        exitStatusEl.textContent = "Preset not found.";
+        return;
+      }
+
+      exitElems.slInput.value = preset.sl.toFixed(2);
+      exitElems.tpInput.value = preset.tp.toFixed(2);
+      exitElems.trailStartInput.value = preset.trailStart.toFixed(2);
+      exitElems.trailDistanceInput.value = preset.trailDistance.toFixed(2);
+      exitElems.candleRedInput.value = preset.candleRed.toFixed(0);
+
+      exitStatusEl.textContent = `${preset.label} loaded into fields. Click UPDATE EXIT to apply.`;
+    }
 
     // --- HELPERS ---
     function setBotRunUi(running) {
@@ -694,6 +807,19 @@
     startBotBtn.addEventListener("click", startBot);
     stopBotBtn.addEventListener("click", stopBot);
     document.getElementById("resetFundsBtn").addEventListener("click", resetFundsGui);
+    applyExitPresetBtn.addEventListener("click", () => {
+      const presetId = exitPresetSelectEl.value;
+      if (!presetId) {
+        exitStatusEl.textContent = "Please choose a preset first.";
+        return;
+      }
+      applyExitPreset(presetId);
+    });
+    exitPresetSelectEl.addEventListener("change", () => {
+      if (exitPresetSelectEl.value) {
+        applyExitPreset(exitPresetSelectEl.value);
+      }
+    });
 
     // --- INITIAL LOAD ---
     fetchStatus();
