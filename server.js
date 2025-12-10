@@ -8,7 +8,7 @@ const { config, CANDLE_RED_TRIGGER_PCT } = require("./config");
 
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfig = {
-  activeStrategyId: 2,
+  activeStrategyId: 102,
   loopIntervalMs: 900000, 
 
    // EXIT SETTINGS (דיפולט מה-config)
@@ -156,7 +156,8 @@ function startHttpServer(shared) {
     // אסטרטגיה
     if (body.activeStrategyId !== undefined) {
       const id = Number(body.activeStrategyId);
-      if (![1, 2, 3].includes(id)) {
+      const allowedStrategyIds = [1, 2, 3, 101, 102, 103, 104, 105, 106, 107, 108];
+      if (!allowedStrategyIds.includes(id)) {
         return res
           .status(400)
           .json({ ok: false, error: "Invalid strategy ID" });

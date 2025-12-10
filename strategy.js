@@ -208,9 +208,24 @@ async function runSymbolStrategy(
         );
         break;
       case 2:
-        isEntryConditionMet = checkEntryTrendPullback(candles, closes, maFast, maSlow, rsi, config);
+      case 101: // Conservative Trend Entry
+      case 102: // Aggressive Trend Entry
+      case 104: // Deep Pullback Entry
+      case 107: // MA Slope Entry
+        isEntryConditionMet = checkEntryTrendPullback(
+          candles,
+          closes,
+          maFast,
+          maSlow,
+          rsi,
+          config
+        );
         break;
       case 3:
+      case 103: // Scalping Mode
+      case 105: // Breakout Entry
+      case 106: // Volatility Adaptive Entry (ATR-Based)
+      case 108: // EMA + ATR Core (Enhanced Version)
         isEntryConditionMet = checkEntryEmaVolume(candles, config);
         break;
       default:
