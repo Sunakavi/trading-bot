@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const { loadState, loadPerformance } = require("./stateManager");
 const { log } = require("./log");
+const { getStats, getMultiRangeStats } = require("./tradeHistory");
 const { config, CANDLE_RED_TRIGGER_PCT, USE_CANDLE_EXIT } = require("./config");
 
 // קונפיג חי – נשלט דרך /api/config
@@ -45,12 +46,29 @@ function getLatestLogLines(maxLines = 200) {
   }
 }
 
-function startHttpServer(shared) {
+function startHttpServer(shared = {}) {
   const app = express();
   app.use(express.json());
 
   // סטטי – ה-frontend
   app.use(express.static(path.join(__dirname, "public")));
+
+  function buildTradeStats() {
+    try {
+      return {
+        overall: getStats(),
+        ...getMultiRangeStats(),
+      };
+    } catch (err) {
+      console.error("trade stats failed", err.message);
+      return {
+        overall: { total: 0, wins: 0, losses: 0, sumPnLPct: 0, sumPnlValue: 0 },
+        last24h: { total: 0, wins: 0, losses: 0, sumPnLPct: 0, sumPnlValue: 0 },
+        last3d: { total: 0, wins: 0, losses: 0, sumPnLPct: 0, sumPnlValue: 0 },
+        last7d: { total: 0, wins: 0, losses: 0, sumPnLPct: 0, sumPnlValue: 0 },
+      };
+    }
+  }
 
   // ===== API: STATUS =====
   app.get("/api/status", (req, res) => {
@@ -58,42 +76,38 @@ function startHttpServer(shared) {
       const state = loadState() || {};
       const perf = loadPerformance() || {};
 
-    const symbolsCount = state.positions
-      ? Object.keys(state.positions).length
-      : 0;
+      const symbolsCount = state.positions
+        ? Object.keys(state.positions).length
+        : 0;
 
-        res.json({
-    ok: true,
-    activeStrategyId:
-      shared.activeStrategyId ?? runtimeConfig.activeStrategyId,
-    killSwitch: shared.killSwitch ?? false,
-    botRunning: shared.botRunning !== false,
-    stateSummary: {
-      symbols: symbolsCount,
-      lastUpdateTs: state.lastUpdateTs || null,
-    },
-    performance: {
-      lastEquity: perf.lastEquity ?? null,
-      lastPnlPct: perf.lastPnlPct ?? null,
-      lastUpdateTs: perf.lastUpdateTs ?? null,
-    },
-    tradeStats: {
-      overall: getStats(),
-      ...getMultiRangeStats(),
-    },
-    config: {
-      loopIntervalMs: runtimeConfig.loopIntervalMs,
-    },
-    exitConfig: {
-      slPct: runtimeConfig.SL_PCT,
-      tpPct: runtimeConfig.TP_PCT,
-      trailStartPct: runtimeConfig.TRAIL_START_PCT,
-      trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
-      candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
-      candleExitEnabled: runtimeConfig.CANDLE_EXIT_ENABLED,
-    },
-  });
-
+      res.json({
+        ok: true,
+        activeStrategyId:
+          shared?.activeStrategyId ?? runtimeConfig.activeStrategyId,
+        killSwitch: shared?.killSwitch ?? false,
+        botRunning: shared?.botRunning !== false,
+        stateSummary: {
+          symbols: symbolsCount,
+          lastUpdateTs: state.lastUpdateTs || null,
+        },
+        performance: {
+          lastEquity: perf.lastEquity ?? null,
+          lastPnlPct: perf.lastPnlPct ?? null,
+          lastUpdateTs: perf.lastUpdateTs ?? null,
+        },
+        tradeStats: buildTradeStats(),
+        config: {
+          loopIntervalMs: runtimeConfig.loopIntervalMs,
+        },
+        exitConfig: {
+          slPct: runtimeConfig.SL_PCT,
+          tpPct: runtimeConfig.TP_PCT,
+          trailStartPct: runtimeConfig.TRAIL_START_PCT,
+          trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
+          candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+          candleExitEnabled: runtimeConfig.CANDLE_EXIT_ENABLED,
+        },
+      });
     } catch (e) {
       console.error(e);
       res.status(500).json({ ok: false, error: "status failed" });
