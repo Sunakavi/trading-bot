@@ -4,7 +4,8 @@ const path = require("path");
 const fs = require("fs");
 const { loadState, loadPerformance } = require("./stateManager");
 const { log } = require("./log");
-const { config, CANDLE_RED_TRIGGER_PCT } = require("./config"); 
+const { config, CANDLE_RED_TRIGGER_PCT } = require("./config");
+const { getStats, getMultiRangeStats } = require("./tradeHistory");
 
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfig = {
@@ -75,6 +76,10 @@ function startHttpServer(shared) {
       lastEquity: perf.lastEquity ?? null,
       lastPnlPct: perf.lastPnlPct ?? null,
       lastUpdateTs: perf.lastUpdateTs ?? null,
+    },
+    tradeStats: {
+      overall: getStats(),
+      ...getMultiRangeStats(),
     },
     config: {
       loopIntervalMs: runtimeConfig.loopIntervalMs,

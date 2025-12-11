@@ -86,6 +86,92 @@
       gap: 20px;
     }
 
+    .summary-bar {
+      background: #0f172a;
+      border: 1px solid #111827;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 0 0 1px #0b1220;
+    }
+
+    .summary-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .summary-title {
+      font-weight: 700;
+      color: #f9fafb;
+      font-size: 15px;
+    }
+
+    .summary-note {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .summary-item {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .summary-label {
+      font-size: 12px;
+      color: #9ca3af;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .summary-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #e5e7eb;
+    }
+
+    .summary-sub {
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+
+    .summary-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .summary-mini-label {
+      font-size: 11px;
+      color: #94a3b8;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .summary-mini-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: #e5e7eb;
+    }
+
+    .summary-mini-sub {
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
     .card {
       background: #1f2933;
       border-radius: 8px;
@@ -288,6 +374,69 @@
       </div>
     </div>
     <div class="status-line" id="botControlStatus"></div>
+
+    <div class="summary-bar">
+      <div class="summary-header">
+        <div>
+          <div class="summary-title">Performance snapshots</div>
+          <div class="summary-note">PNL, trades, wins/losses, and win rate for each window.</div>
+        </div>
+        <div class="summary-note">Auto-refreshes with the bot status poll.</div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">Last 24 hours</div>
+          <div class="summary-value" id="summaryPnlValue-24h">–</div>
+          <div class="summary-sub" id="summaryPnlPct-24h">–</div>
+          <div class="summary-metrics">
+            <div>
+              <div class="summary-mini-label">Trades</div>
+              <div class="summary-mini-value" id="summaryTrades-24h">–</div>
+              <div class="summary-mini-sub" id="summaryWinLoss-24h">–</div>
+            </div>
+            <div>
+              <div class="summary-mini-label">Win rate</div>
+              <div class="summary-mini-value" id="summaryWinRate-24h">–</div>
+              <div class="summary-mini-sub" id="summaryAvgPnl-24h">–</div>
+            </div>
+          </div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Last 3 days</div>
+          <div class="summary-value" id="summaryPnlValue-3d">–</div>
+          <div class="summary-sub" id="summaryPnlPct-3d">–</div>
+          <div class="summary-metrics">
+            <div>
+              <div class="summary-mini-label">Trades</div>
+              <div class="summary-mini-value" id="summaryTrades-3d">–</div>
+              <div class="summary-mini-sub" id="summaryWinLoss-3d">–</div>
+            </div>
+            <div>
+              <div class="summary-mini-label">Win rate</div>
+              <div class="summary-mini-value" id="summaryWinRate-3d">–</div>
+              <div class="summary-mini-sub" id="summaryAvgPnl-3d">–</div>
+            </div>
+          </div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Last 1 week</div>
+          <div class="summary-value" id="summaryPnlValue-7d">–</div>
+          <div class="summary-sub" id="summaryPnlPct-7d">–</div>
+          <div class="summary-metrics">
+            <div>
+              <div class="summary-mini-label">Trades</div>
+              <div class="summary-mini-value" id="summaryTrades-7d">–</div>
+              <div class="summary-mini-sub" id="summaryWinLoss-7d">–</div>
+            </div>
+            <div>
+              <div class="summary-mini-label">Win rate</div>
+              <div class="summary-mini-value" id="summaryWinRate-7d">–</div>
+              <div class="summary-mini-sub" id="summaryAvgPnl-7d">–</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="grid">
       <!-- LEFT: STATUS + CONTROLS -->
@@ -503,6 +652,26 @@
     const botRunBadgeEl = document.getElementById("botRunBadge");
     const startBotBtn = document.getElementById("startBotBtn");
     const stopBotBtn = document.getElementById("stopBotBtn");
+
+    const summaryConfig = {
+      last24h: { suffix: "24h", label: "24h" },
+      last3d: { suffix: "3d", label: "3 days" },
+      last7d: { suffix: "7d", label: "1 week" },
+    };
+
+    const summaryEls = Object.fromEntries(
+      Object.entries(summaryConfig).map(([key, cfg]) => [
+        key,
+        {
+          pnlValue: document.getElementById(`summaryPnlValue-${cfg.suffix}`),
+          pnlPct: document.getElementById(`summaryPnlPct-${cfg.suffix}`),
+          trades: document.getElementById(`summaryTrades-${cfg.suffix}`),
+          winLoss: document.getElementById(`summaryWinLoss-${cfg.suffix}`),
+          winRate: document.getElementById(`summaryWinRate-${cfg.suffix}`),
+          avgPnl: document.getElementById(`summaryAvgPnl-${cfg.suffix}`),
+        },
+      ])
+    );
 
     const exitElems = {
       slValue: document.getElementById("exitSlValue"),
@@ -794,6 +963,14 @@
       return sign + v.toFixed(2) + "%";
     }
 
+    function formatUsd(v) {
+      if (v === null || v === undefined) return "–";
+      const num = Number(v);
+      if (Number.isNaN(num)) return "–";
+      const sign = num > 0 ? "+" : num < 0 ? "" : "";
+      return sign + num.toFixed(2) + " USDT";
+    }
+
     function pctText(v, digits = 2) {
       return v === null || v === undefined ? "–" : (v * 100).toFixed(digits) + "%";
     }
@@ -878,6 +1055,44 @@
       }
     }
 
+    function updateSummaryGroup(key, stats) {
+      const cfg = summaryConfig[key];
+      const els = summaryEls[key];
+      if (!cfg || !els || !els.pnlValue) return;
+
+      const total = Number(stats?.total) || 0;
+      const wins = Number(stats?.wins) || 0;
+      const losses = Number(stats?.losses) || 0;
+
+      let sumPnLPct = Number(stats?.sumPnLPct);
+      let sumPnlValue = Number(stats?.sumPnlValue);
+
+      if (!Number.isFinite(sumPnLPct)) sumPnLPct = 0;
+      if (!Number.isFinite(sumPnlValue)) sumPnlValue = 0;
+
+      els.pnlValue.textContent = formatUsd(sumPnlValue);
+      els.pnlPct.textContent = formatPnl(sumPnLPct);
+      els.trades.textContent = String(total);
+      els.winLoss.textContent = `Wins ${wins} • Losses ${losses}`;
+
+      if (total > 0) {
+        const winRate = (wins / total) * 100;
+        els.winRate.textContent = `${winRate.toFixed(1)}%`;
+        const avgPnl = sumPnLPct / total;
+        els.avgPnl.textContent = `Avg/Trade: ${formatPnl(avgPnl)}`;
+      } else {
+        els.winRate.textContent = "0%";
+        els.avgPnl.textContent = `No trades in last ${cfg.label}`;
+      }
+    }
+
+    function updateSummaryBar(allStats) {
+      if (!allStats) return;
+      Object.keys(summaryConfig).forEach((key) => {
+        updateSummaryGroup(key, allStats?.[key]);
+      });
+    }
+
     // --- STATUS POLLING ---
     async function fetchStatus() {
       try {
@@ -935,6 +1150,8 @@
           statusEls.killBadge.classList.remove("badge-red");
           statusEls.killBadge.classList.add("badge-green");
         }
+
+        updateSummaryBar(data.tradeStats || {});
 
         statusEls.updated.textContent =
           "Last update: " +
