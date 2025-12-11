@@ -77,6 +77,10 @@ function startHttpServer(shared) {
       lastPnlPct: perf.lastPnlPct ?? null,
       lastUpdateTs: perf.lastUpdateTs ?? null,
     },
+    tradeStats: {
+      overall: getStats(),
+      ...getMultiRangeStats(),
+    },
     config: {
       loopIntervalMs: runtimeConfig.loopIntervalMs,
     },
