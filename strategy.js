@@ -137,6 +137,7 @@ async function runSymbolStrategy(
   killSwitch,
   sellSwitch,
   candleRedTriggerPct,
+  candleExitEnabled,
   activeStrategyId
 ) {
   try {
@@ -192,7 +193,8 @@ async function runSymbolStrategy(
         binanceClient,
         config,
         sellSwitch,
-        candleRedTriggerPct
+        candleRedTriggerPct,
+        candleExitEnabled
       );
     }
 
@@ -276,7 +278,8 @@ async function handleExit(
   binanceClient,
   config,
   sellSwitch,
-  candleRedTriggerPct
+  candleRedTriggerPct,
+  candleExitEnabled
 ) {
   const price = last.close;
   const entry = pos.entryPrice;
@@ -308,22 +311,26 @@ async function handleExit(
   const isRed = last.close < last.open;
   const redBody = isRed ? Math.abs(last.close - last.open) : 0;
   
-  let candleExitOk = false;
-  if (isRed && prevBody > 0) {
-    if (redBody / prevBody >= candleRedTriggerPct) {
-      candleExitOk = true;
+  let candleExitOk = !candleExitEnabled; // אם בדיקת נר כבויה – מאושר אוטומטית
+  if (candleExitEnabled) {
+    if (isRed && prevBody > 0) {
+      if (redBody / prevBody >= candleRedTriggerPct) {
+        candleExitOk = true;
+      }
+    } else if (!isRed) {
+      candleExitOk = false;
     }
-  } else if (!isRed) {
-    candleExitOk = false; 
   }
-  
-  // 5. Final Exit Signal: TP/SL triggered AND candle confirms OR if emergency SELL_SWITCH is ON
+
+  // 5. Final Exit Signal: TP/SL triggered AND candle confirms (אם מופעל) OR if emergency SELL_SWITCH is ON
   const exitSignal = (rawExitSignal && candleExitOk) || sellSwitch;
 
   if (exitSignal) {
     log(
       COLORS.RED +
-      `[${symbol}] → EXIT SIGNAL: TP/SL/TRAIL (${rawExitSignal ? "YES" : "NO"}) AND CandleConfirm/SW (${candleExitOk ? "YES" : "NO" || sellSwitch ? "SELL_SWITCH" : "NO"})` +
+      `[${symbol}] → EXIT SIGNAL: TP/SL/TRAIL (${rawExitSignal ? "YES" : "NO"}) AND ${
+        candleExitEnabled ? "CandleConfirm" : "CandleCheck OFF"
+      }/${sellSwitch ? "SELL_SWITCH" : "SW"} (${candleExitOk ? "YES" : "NO"})` +
       COLORS.RESET
     );
     
@@ -361,7 +368,7 @@ if (result) {
   );
 }
 
-  } else if (rawExitSignal && !candleExitOk) {
+  } else if (rawExitSignal && candleExitEnabled && !candleExitOk) {
     log(
       COLORS.YELLOW + `[${symbol}] TP/SL HIT BUT candleExitOk=false → HOLD` + COLORS.RESET
     );

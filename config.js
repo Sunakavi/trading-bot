@@ -10,6 +10,7 @@ const COLORS = {
 
 // מינימום עוצמת נר אדום (באחוז מגודל הגוף של הנר הקודם) כדי לאפשר יציאה
 const CANDLE_RED_TRIGGER_PCT = 0.4; // 40% – תוכל לשחק עם זה
+const USE_CANDLE_EXIT = false; // ברירת מחדל: יציאה ללא דרישת נר
 
 const INITIAL_CAPITAL = 100000; // הון התחלתי לצורך חישוב PNL
 
@@ -60,6 +61,7 @@ const config = {
   // SYSTEM
   KILL_SWITCH: false, // אם true לא נעשה שום טרייד
   LOOP_SLEEP_MS: 15 * 60 * 1000, // 15 minutes
+  USE_CANDLE_EXIT,
 
 };
 
@@ -68,5 +70,6 @@ module.exports = {
   config,
   INITIAL_CAPITAL,
   CANDLE_RED_TRIGGER_PCT,
+  USE_CANDLE_EXIT,
   LOOP_SLEEP_MS: config.LOOP_SLEEP_MS,
 };

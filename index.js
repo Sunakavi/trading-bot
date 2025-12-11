@@ -323,6 +323,8 @@ async function mainLoop() {
         runtimeConfig.TRAIL_START_PCT ?? config.TRAIL_START_PCT;
       config.TRAIL_DISTANCE_PCT =
         runtimeConfig.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT;
+      config.USE_CANDLE_EXIT =
+        runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT;
 
       // אם ה-API ביקש KILL
       if (shared.killSwitch) SELL_SWITCH = true;
@@ -386,6 +388,7 @@ async function mainLoop() {
         KILL_SWITCH,
         SELL_SWITCH,
         runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+        runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT,
         runtimeConfig.activeStrategyId
       );
 

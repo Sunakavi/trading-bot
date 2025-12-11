@@ -349,7 +349,7 @@
           <span class="value"><span id="exitTrailDistanceValue">–</span></span>
         </div>
         <div class="row">
-          <span class="label">Candle Red:</span>
+          <span class="label">Candle Exit:</span>
           <span class="value"><span id="exitCandleRedValue">–</span></span>
         </div>
 
@@ -393,7 +393,20 @@
         <div class="row">
           <span class="label">Candle (%):</span>
           <div>
-            <input id="exitCandleRedInput" class="num-input" type="number" step="1" min="0" max="100" placeholder="Red %" />
+            <label style="display: flex; align-items: center; gap: 8px;">
+              <input id="exitCandleEnabledInput" type="checkbox" />
+              <span>Use candle confirmation</span>
+            </label>
+            <input
+              id="exitCandleRedInput"
+              class="num-input"
+              type="number"
+              step="1"
+              min="0"
+              max="100"
+              placeholder="Red %"
+              disabled
+            />
           </div>
         </div>
 
@@ -516,6 +529,7 @@
       trailStartInput: document.getElementById("exitTrailStartInput"),
       trailDistanceInput: document.getElementById("exitTrailDistanceInput"),
       candleRedInput: document.getElementById("exitCandleRedInput"),
+      candleEnabledInput: document.getElementById("exitCandleEnabledInput"),
     };
 
     const exitStatusEl = document.getElementById("exitStatus");
@@ -909,7 +923,12 @@
           exitElems.tpValue.textContent = pctText(ex.tpPct);
           exitElems.trailStartValue.textContent = pctText(ex.trailStartPct);
           exitElems.trailDistanceValue.textContent = pctText(ex.trailDistancePct);
-          exitElems.candleRedValue.textContent = pctText(ex.candleRedTriggerPct, 0);
+          const candleEnabled = !!ex.candleExitEnabled;
+          exitElems.candleRedValue.textContent = candleEnabled
+            ? pctText(ex.candleRedTriggerPct, 0)
+            : "Disabled";
+          exitElems.candleEnabledInput.checked = candleEnabled;
+          exitElems.candleRedInput.disabled = !candleEnabled;
 
           // Prefill inputs only if empty, to avoid overwriting user typing
           if (!exitElems.slInput.value && ex.slPct != null)
@@ -954,6 +973,7 @@
         const ts = parseFloat(exitElems.trailStartInput.value);
         const td = parseFloat(exitElems.trailDistanceInput.value);
         const cr = parseFloat(exitElems.candleRedInput.value);
+        const candleEnabled = exitElems.candleEnabledInput.checked;
 
         const payload = {};
 
@@ -962,6 +982,7 @@
         if (!Number.isNaN(ts)) payload.trailStartPct = ts / 100.0;
         if (!Number.isNaN(td)) payload.trailDistancePct = td / 100.0;
         if (!Number.isNaN(cr)) payload.candleRedTriggerPct = cr / 100.0;
+        payload.candleExitEnabled = candleEnabled;
 
         const res = await fetch("/api/config", {
           method: "POST",
@@ -1099,6 +1120,10 @@
       if (exitPresetSelectEl.value) {
         applyExitPreset(exitPresetSelectEl.value);
       }
+    });
+
+    exitElems.candleEnabledInput.addEventListener("change", () => {
+      exitElems.candleRedInput.disabled = !exitElems.candleEnabledInput.checked;
     });
 
     entryStrategySelectEl.addEventListener("change", () => {
