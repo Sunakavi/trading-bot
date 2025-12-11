@@ -84,21 +84,48 @@ function addTrade(trade) {
   );
 }
 
-// סטטיסטיקה כללית לשורת לוג
-function getStats() {
-  let total = trades.length;
+function buildStats(list) {
+  let total = list.length;
   let wins = 0;
   let losses = 0;
   let sumPnLPct = 0;
+  let sumPnlValue = 0;
 
-  for (const t of trades) {
+  for (const t of list) {
     const pct = Number(t.pnlPct) || 0;
+    const val = Number(t.pnlValue) || 0;
     sumPnLPct += pct;
+    sumPnlValue += val;
     if (pct > 0) wins++;
     if (pct < 0) losses++;
   }
 
-  return { total, wins, losses, sumPnLPct };
+  return { total, wins, losses, sumPnLPct, sumPnlValue };
+}
+
+// סטטיסטיקה כללית לשורת לוג
+function getStats() {
+  return buildStats(trades);
+}
+
+function getRecentStats(hours = 24) {
+  const now = Date.now();
+  const cutoff = now - hours * 60 * 60 * 1000;
+
+  const recent = trades.filter((t) => {
+    const ts = new Date(t.time).getTime();
+    return Number.isFinite(ts) && ts >= cutoff;
+  });
+
+  return buildStats(recent);
+}
+
+function getMultiRangeStats() {
+  return {
+    last24h: getRecentStats(24),
+    last3d: getRecentStats(24 * 3),
+    last7d: getRecentStats(24 * 7),
+  };
 }
 
 // אם תרצה בעתיד – גישה להיסטוריה מלאה
@@ -110,5 +137,7 @@ module.exports = {
   initTradeHistory,
   addTrade,
   getStats,
+  getRecentStats,
+  getMultiRangeStats,
   getAllTrades,
 };
