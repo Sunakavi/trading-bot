@@ -4,8 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const { loadState, loadPerformance } = require("./stateManager");
 const { log } = require("./log");
-const { config, CANDLE_RED_TRIGGER_PCT } = require("./config");
-const { getStats, getMultiRangeStats } = require("./tradeHistory");
+const { config, CANDLE_RED_TRIGGER_PCT, USE_CANDLE_EXIT } = require("./config");
 
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfig = {
@@ -18,6 +17,7 @@ const runtimeConfig = {
   TRAIL_START_PCT: config.TRAIL_START_PCT,
   TRAIL_DISTANCE_PCT: config.TRAIL_DISTANCE_PCT,
   CANDLE_RED_TRIGGER_PCT, // טריגר לנר אדום
+  CANDLE_EXIT_ENABLED: USE_CANDLE_EXIT,
 };
 
 
@@ -90,6 +90,7 @@ function startHttpServer(shared) {
       trailStartPct: runtimeConfig.TRAIL_START_PCT,
       trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
       candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+      candleExitEnabled: runtimeConfig.CANDLE_EXIT_ENABLED,
     },
   });
 
@@ -149,6 +150,7 @@ function startHttpServer(shared) {
       trailStartPct: runtimeConfig.TRAIL_START_PCT,
       trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
       candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+      candleExitEnabled: runtimeConfig.CANDLE_EXIT_ENABLED,
     },
   });
 });
@@ -252,6 +254,20 @@ function startHttpServer(shared) {
     runtimeConfig.CANDLE_RED_TRIGGER_PCT = v;
     shared.interruptNow = true;
     log(`[API] CANDLE_RED_TRIGGER_PCT set to ${v}`);
+  }
+
+  if (body.candleExitEnabled !== undefined) {
+    if (typeof body.candleExitEnabled !== "boolean") {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Invalid candleExitEnabled" });
+    }
+    runtimeConfig.CANDLE_EXIT_ENABLED = body.candleExitEnabled;
+    config.USE_CANDLE_EXIT = body.candleExitEnabled;
+    shared.interruptNow = true;
+    log(
+      `[API] CANDLE_EXIT_ENABLED set to ${body.candleExitEnabled ? "ON" : "OFF"}`
+    );
   }
 
     res.json({
