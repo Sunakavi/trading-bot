@@ -23,25 +23,63 @@ const runtimeConfig = {
 
 
 
-// קריאת שורות הלוג האחרונות מהקובץ האחרון בתיקיית logs
-function getLatestLogLines(maxLines = 200) {
+const LOG_DIR = path.join(__dirname, "logs");
+
+function listLogFiles() {
+  if (!fs.existsSync(LOG_DIR)) return [];
+
+  return fs
+    .readdirSync(LOG_DIR)
+    .filter((f) => f.endsWith(".log"))
+    .map((name) => {
+      const filePath = path.join(LOG_DIR, name);
+      const stats = fs.statSync(filePath);
+      const dateMatch = name.match(/(\d{4}-\d{2}-\d{2})/);
+
+      return {
+        name,
+        date: dateMatch ? dateMatch[1] : null,
+        size: stats.size,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function resolveLogFile(fileName) {
+  const safeName = path.basename(fileName);
+  const target = path.join(LOG_DIR, safeName);
+
+  if (!target.startsWith(LOG_DIR)) {
+    throw new Error("Invalid log path");
+  }
+
+  if (!fs.existsSync(target)) {
+    throw new Error("Log file not found");
+  }
+
+  return target;
+}
+
+// קריאת שורות הלוג האחרונות מהקובץ האחרון או מקובץ ספציפי בתיקיית logs
+function getLatestLogLines(maxLines = 200, fileName = "") {
   try {
-    const logDir = path.join(__dirname, "logs");
-    if (!fs.existsSync(logDir)) return [];
+    if (!fs.existsSync(LOG_DIR)) return [];
 
-    const files = fs
-      .readdirSync(logDir)
-      .filter((f) => f.endsWith(".log"))
-      .sort(); // בד"כ לפי תאריך בשם הקובץ
+    let filePath = "";
 
-    if (!files.length) return [];
+    if (fileName) {
+      filePath = resolveLogFile(fileName);
+    } else {
+      const files = listLogFiles();
+      if (!files.length) return [];
+      filePath = path.join(LOG_DIR, files[files.length - 1].name);
+    }
 
-    const lastFile = path.join(logDir, files[files.length - 1]);
-    const content = fs.readFileSync(lastFile, "utf8");
+    const content = fs.readFileSync(filePath, "utf8");
     const lines = content.split(/\r?\n/).filter(Boolean);
     return lines.slice(-maxLines);
   } catch (e) {
-    console.error("getLatestLogLines error:", e);
+    console.error("getLatestLogLines error:", e.message);
     return [];
   }
 }
@@ -116,8 +154,32 @@ function startHttpServer(shared = {}) {
 
   // ===== API: LOGS =====
   app.get("/api/logs", (req, res) => {
-    const lines = getLatestLogLines(300);
+    const fileName = typeof req.query.file === "string" ? req.query.file : "";
+    const lines = getLatestLogLines(300, fileName);
     res.json({ ok: true, lines });
+  });
+
+  app.get("/api/logs/list", (req, res) => {
+    try {
+      const files = listLogFiles();
+      res.json({ ok: true, files });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to list log files" });
+    }
+  });
+
+  app.get("/api/logs/download", (req, res) => {
+    try {
+      const fileName = req.query.file;
+      if (typeof fileName !== "string" || !fileName.endsWith(".log")) {
+        return res.status(400).json({ ok: false, error: "Invalid log file" });
+      }
+
+      const filePath = resolveLogFile(fileName);
+      res.download(filePath, fileName);
+    } catch (err) {
+      res.status(404).json({ ok: false, error: "Log file not found" });
+    }
   });
 
   // ===== API: KILL SWITCH (SELL ALL) =====
