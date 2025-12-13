@@ -24,6 +24,7 @@ const {
   saveState,
   loadPerformance,
   savePerformance,
+  updateState,
 } = require("./stateManager");
 const { startHttpServer, runtimeConfig } = require("./server");
 
@@ -88,6 +89,7 @@ setupKeypressListener(
   (newId) => {
     activeStrategyId = newId;
     runtimeConfig.activeStrategyId = newId; // סינכרון גם ל-API
+    updateState({ activeStrategyId: newId });
   }
 );
 

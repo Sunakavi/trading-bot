@@ -41,6 +41,25 @@ function saveState(state) {
     console.error("[STATE] saveState error:", err.message);
   }
 }
+
+/**
+ * מעדכן חלקית את ה-state הקיים ושומר לדיסק.
+ * שימושי לשינויים קטנים (למשל החלפת activeStrategyId) גם כשהבוט לא בשלב שמירה רגיל.
+ */
+function updateState(partialState) {
+  try {
+    const current = loadState() || {};
+    const merged = {
+      ...current,
+      ...partialState,
+      lastUpdateTs: Date.now(),
+    };
+
+    saveState(merged);
+  } catch (err) {
+    console.error("[STATE] updateState error:", err.message);
+  }
+}
 function loadPerformance() {
   try {
     if (!fs.existsSync(PERFORMANCE_FILE)) {
@@ -67,6 +86,7 @@ function savePerformance(perf) {
 module.exports = {
   loadState,
   saveState,
+  updateState,
   loadPerformance,
   savePerformance,
 };

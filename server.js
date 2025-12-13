@@ -2,7 +2,7 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
-const { loadState, loadPerformance } = require("./stateManager");
+const { loadState, loadPerformance, updateState } = require("./stateManager");
 const { log } = require("./log");
 const { getStats, getMultiRangeStats } = require("./tradeHistory");
 const { config, CANDLE_RED_TRIGGER_PCT, USE_CANDLE_EXIT } = require("./config");
@@ -216,25 +216,26 @@ function startHttpServer(shared = {}) {
     res.json({ ok: true, message: "RESET FUNDS REQUESTED" });
   });
 
- app.get("/api/config", (req, res) => {
-  res.json({
-    ok: true,
-    config: runtimeConfig,
-    exitConfig: {
-      slPct: runtimeConfig.SL_PCT,
-      tpPct: runtimeConfig.TP_PCT,
-      trailStartPct: runtimeConfig.TRAIL_START_PCT,
-      trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
-      candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
-      candleExitEnabled: runtimeConfig.CANDLE_EXIT_ENABLED,
-    },
+  app.get("/api/config", (req, res) => {
+    res.json({
+      ok: true,
+      config: runtimeConfig,
+      exitConfig: {
+        slPct: runtimeConfig.SL_PCT,
+        tpPct: runtimeConfig.TP_PCT,
+        trailStartPct: runtimeConfig.TRAIL_START_PCT,
+        trailDistancePct: runtimeConfig.TRAIL_DISTANCE_PCT,
+        candleRedTriggerPct: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+        candleExitEnabled: runtimeConfig.CANDLE_EXIT_ENABLED,
+      },
+    });
   });
-});
 
 
   // ===== API: עדכון קונפיג (אסטרטגיה + אינטרוול) =====
   app.post("/api/config", (req, res) => {
     const body = req.body;
+    let stateDirty = false;
 
     // אסטרטגיה
     if (body.activeStrategyId !== undefined) {
@@ -249,6 +250,7 @@ function startHttpServer(shared = {}) {
       shared.activeStrategyId = id;
       shared.interruptNow = true; // חדש – שובר את השינה
       log(`[API] Strategy set to ${id}`);
+      stateDirty = true;
     }
 
     // אינטרוול
@@ -263,88 +265,102 @@ function startHttpServer(shared = {}) {
       runtimeConfig.loopIntervalMs = val;
       shared.interruptNow = true; // חדש – שובר את השינה
       log(`[API] Interval set to ${val} ms`);
+      stateDirty = true;
     }
-      // --- EXIT SETTINGS (SL/TP/TRAIL/CANDLE) ---
-  // הערכים נשלחים בדצימל (0.012 = 1.2%)
 
-  // SL_PCT
-  if (body.slPct !== undefined) {
-    const v = Number(body.slPct);
-    if (!(v > 0 && v < 0.5)) {
-      return res.status(400).json({ ok: false, error: "Invalid slPct" });
-    }
-    runtimeConfig.SL_PCT = v;
-    config.SL_PCT = v; // כדי שה-strategy.js יקבל את זה דרך config
-    shared.interruptNow = true;
-    log(`[API] SL_PCT set to ${v}`);
-  }
+    // --- EXIT SETTINGS (SL/TP/TRAIL/CANDLE) ---
+    // הערכים נשלחים בדצימל (0.012 = 1.2%)
 
-  // TP_PCT
-  if (body.tpPct !== undefined) {
-    const v = Number(body.tpPct);
-    if (!(v > 0 && v < 1.0)) {
-      return res.status(400).json({ ok: false, error: "Invalid tpPct" });
+    // SL_PCT
+    if (body.slPct !== undefined) {
+      const v = Number(body.slPct);
+      if (!(v > 0 && v < 0.5)) {
+        return res.status(400).json({ ok: false, error: "Invalid slPct" });
+      }
+      runtimeConfig.SL_PCT = v;
+      config.SL_PCT = v; // כדי שה-strategy.js יקבל את זה דרך config
+      shared.interruptNow = true;
+      log(`[API] SL_PCT set to ${v}`);
+      stateDirty = true;
     }
-    runtimeConfig.TP_PCT = v;
-    config.TP_PCT = v;
-    shared.interruptNow = true;
-    log(`[API] TP_PCT set to ${v}`);
-  }
 
-  // TRAIL_START_PCT
-  if (body.trailStartPct !== undefined) {
-    const v = Number(body.trailStartPct);
-    if (!(v > 0 && v < 1.0)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Invalid trailStartPct" });
+    // TP_PCT
+    if (body.tpPct !== undefined) {
+      const v = Number(body.tpPct);
+      if (!(v > 0 && v < 1.0)) {
+        return res.status(400).json({ ok: false, error: "Invalid tpPct" });
+      }
+      runtimeConfig.TP_PCT = v;
+      config.TP_PCT = v;
+      shared.interruptNow = true;
+      log(`[API] TP_PCT set to ${v}`);
+      stateDirty = true;
     }
-    runtimeConfig.TRAIL_START_PCT = v;
-    config.TRAIL_START_PCT = v;
-    shared.interruptNow = true;
-    log(`[API] TRAIL_START_PCT set to ${v}`);
-  }
 
-  // TRAIL_DISTANCE_PCT
-  if (body.trailDistancePct !== undefined) {
-    const v = Number(body.trailDistancePct);
-    if (!(v > 0 && v < 1.0)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Invalid trailDistancePct" });
+    // TRAIL_START_PCT
+    if (body.trailStartPct !== undefined) {
+      const v = Number(body.trailStartPct);
+      if (!(v > 0 && v < 1.0)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid trailStartPct" });
+      }
+      runtimeConfig.TRAIL_START_PCT = v;
+      config.TRAIL_START_PCT = v;
+      shared.interruptNow = true;
+      log(`[API] TRAIL_START_PCT set to ${v}`);
+      stateDirty = true;
     }
-    runtimeConfig.TRAIL_DISTANCE_PCT = v;
-    config.TRAIL_DISTANCE_PCT = v;
-    shared.interruptNow = true;
-    log(`[API] TRAIL_DISTANCE_PCT set to ${v}`);
-  }
 
-  // CANDLE_RED_TRIGGER_PCT
-  if (body.candleRedTriggerPct !== undefined) {
-    const v = Number(body.candleRedTriggerPct);
-    if (!(v >= 0 && v <= 1.0)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Invalid candleRedTriggerPct" });
+    // TRAIL_DISTANCE_PCT
+    if (body.trailDistancePct !== undefined) {
+      const v = Number(body.trailDistancePct);
+      if (!(v > 0 && v < 1.0)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid trailDistancePct" });
+      }
+      runtimeConfig.TRAIL_DISTANCE_PCT = v;
+      config.TRAIL_DISTANCE_PCT = v;
+      shared.interruptNow = true;
+      log(`[API] TRAIL_DISTANCE_PCT set to ${v}`);
+      stateDirty = true;
     }
-    runtimeConfig.CANDLE_RED_TRIGGER_PCT = v;
-    shared.interruptNow = true;
-    log(`[API] CANDLE_RED_TRIGGER_PCT set to ${v}`);
-  }
 
-  if (body.candleExitEnabled !== undefined) {
-    if (typeof body.candleExitEnabled !== "boolean") {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Invalid candleExitEnabled" });
+    // CANDLE_RED_TRIGGER_PCT
+    if (body.candleRedTriggerPct !== undefined) {
+      const v = Number(body.candleRedTriggerPct);
+      if (!(v >= 0 && v <= 1.0)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid candleRedTriggerPct" });
+      }
+      runtimeConfig.CANDLE_RED_TRIGGER_PCT = v;
+      shared.interruptNow = true;
+      log(`[API] CANDLE_RED_TRIGGER_PCT set to ${v}`);
+      stateDirty = true;
     }
-    runtimeConfig.CANDLE_EXIT_ENABLED = body.candleExitEnabled;
-    config.USE_CANDLE_EXIT = body.candleExitEnabled;
-    shared.interruptNow = true;
-    log(
-      `[API] CANDLE_EXIT_ENABLED set to ${body.candleExitEnabled ? "ON" : "OFF"}`
-    );
-  }
+
+    if (body.candleExitEnabled !== undefined) {
+      if (typeof body.candleExitEnabled !== "boolean") {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid candleExitEnabled" });
+      }
+      runtimeConfig.CANDLE_EXIT_ENABLED = body.candleExitEnabled;
+      config.USE_CANDLE_EXIT = body.candleExitEnabled;
+      shared.interruptNow = true;
+      log(
+        `[API] CANDLE_EXIT_ENABLED set to ${body.candleExitEnabled ? "ON" : "OFF"}`
+      );
+      stateDirty = true;
+    }
+
+    if (stateDirty) {
+      updateState({
+        activeStrategyId: runtimeConfig.activeStrategyId,
+      });
+    }
 
     res.json({
       ok: true,
