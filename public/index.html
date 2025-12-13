@@ -285,6 +285,20 @@
       font-size: 13px;
       color: #9ca3af;
     }
+    .log-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .log-controls .num-input {
+      width: 200px;
+    }
+    .log-download[aria-disabled="true"] {
+      opacity: 0.5;
+      pointer-events: none;
+    }
     .pill {
       padding: 2px 8px;
       border-radius: 999px;
@@ -610,7 +624,14 @@
       <div class="card">
         <div class="log-header">
           <div class="log-title">Live Logs</div>
-          <div>
+          <div class="log-controls">
+            <label for="logFileSelect" style="font-size: 12px; color: #9ca3af;">Log file:</label>
+            <select id="logFileSelect" class="num-input">
+              <option value="">Latest (live)</option>
+            </select>
+            <button id="logLoadBtn" class="btn btn-outline btn-small">View</button>
+            <button id="logRefreshBtn" class="btn btn-outline btn-small">Refresh list</button>
+            <a id="logDownloadLink" class="btn btn-primary btn-small log-download" aria-disabled="true" download>Download</a>
             <span class="pill" id="logStatusPill">Polling every 5s</span>
           </div>
         </div>
@@ -661,10 +682,16 @@
     const resetFundsStatusEl = document.getElementById("resetFundsStatus");
     const logContainerEl = document.getElementById("logContainer");
     const logStatusPillEl = document.getElementById("logStatusPill");
+    const logFileSelectEl = document.getElementById("logFileSelect");
+    const logRefreshBtn = document.getElementById("logRefreshBtn");
+    const logLoadBtn = document.getElementById("logLoadBtn");
+    const logDownloadLinkEl = document.getElementById("logDownloadLink");
     const botControlStatusEl = document.getElementById("botControlStatus");
     const botRunBadgeEl = document.getElementById("botRunBadge");
     const startBotBtn = document.getElementById("startBotBtn");
     const stopBotBtn = document.getElementById("stopBotBtn");
+
+    let selectedLogFile = "";
 
     const summaryConfig = {
       last24h: { suffix: "24h", label: "24h" },
@@ -1218,9 +1245,50 @@
     }
 
     // --- LOGS POLLING ---
+    function updateLogDownloadLink() {
+      if (selectedLogFile) {
+        logDownloadLinkEl.href = `/api/logs/download?file=${encodeURIComponent(selectedLogFile)}`;
+        logDownloadLinkEl.setAttribute("aria-disabled", "false");
+      } else {
+        logDownloadLinkEl.removeAttribute("href");
+        logDownloadLinkEl.setAttribute("aria-disabled", "true");
+      }
+    }
+
+    async function fetchLogFiles() {
+      try {
+        const res = await fetch("/api/logs/list");
+        const data = await res.json();
+        if (!data.ok || !Array.isArray(data.files)) {
+          throw new Error("invalid log list");
+        }
+
+        const options = ["<option value=\"\">Latest (live)</option>"];
+        data.files.forEach((file) => {
+          const sizeKb = file.size ? (file.size / 1024).toFixed(1) : "0";
+          const label = file.date ? `${file.date} (${sizeKb} KB)` : `${file.name} (${sizeKb} KB)`;
+          const selected = file.name === selectedLogFile ? "selected" : "";
+          options.push(`<option value="${file.name}" ${selected}>${label}</option>`);
+        });
+
+        logFileSelectEl.innerHTML = options.join("");
+
+        if (selectedLogFile && !data.files.find((f) => f.name === selectedLogFile)) {
+          selectedLogFile = "";
+        }
+
+        updateLogDownloadLink();
+      } catch (err) {
+        logStatusPillEl.textContent = "Log list error: " + err.message;
+      }
+    }
+
     async function fetchLogs() {
       try {
-        const res = await fetch("/api/logs");
+        const url = selectedLogFile
+          ? `/api/logs?file=${encodeURIComponent(selectedLogFile)}`
+          : "/api/logs";
+        const res = await fetch(url);
         const data = await res.json();
         if (!data.ok || !Array.isArray(data.lines)) {
           throw new Error("invalid log payload");
@@ -1230,7 +1298,8 @@
         logContainerEl.innerHTML = html || "(no logs yet)";
         // auto scroll to bottom
         logContainerEl.scrollTop = logContainerEl.scrollHeight;
-        logStatusPillEl.textContent = "Last log update: " + new Date().toLocaleTimeString();
+        const label = selectedLogFile ? `Viewing ${selectedLogFile}` : "Polling every 5s";
+        logStatusPillEl.textContent = `${label} • ${new Date().toLocaleTimeString()}`;
       } catch (err) {
         logStatusPillEl.textContent = "Log error: " + err.message;
       }
@@ -1352,9 +1421,24 @@
     renderEntryStrategyOptions();
     renderEntryStrategyTable();
 
+    logFileSelectEl.addEventListener("change", () => {
+      selectedLogFile = logFileSelectEl.value;
+      updateLogDownloadLink();
+      fetchLogs();
+    });
+
+    logLoadBtn.addEventListener("click", () => {
+      fetchLogs();
+    });
+
+    logRefreshBtn.addEventListener("click", () => {
+      fetchLogFiles();
+    });
+
     // --- INITIAL LOAD ---
     fetchStatus();
     fetchLogs();
+    fetchLogFiles();
 
     // --- POLLERS ---
     setInterval(fetchStatus, 8000); // status every 8s
