@@ -13,6 +13,37 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 // זיכרון חי
 let trades = [];
 
+// ---- Utilities ----
+function getTradeTimestampMs(trade) {
+  // Prefer ISO string stored in `time`
+  const iso = trade?.time;
+  const isoMs = iso ? Date.parse(iso) : NaN;
+  if (Number.isFinite(isoMs)) return isoMs;
+
+  // Fallback to legacy `timestamp` key (either ms number or ISO string)
+  const legacy = trade?.timestamp;
+  if (legacy !== undefined) {
+    const fromNumber = Number(legacy);
+    if (Number.isFinite(fromNumber)) return fromNumber;
+
+    const parsedLegacy = Date.parse(legacy);
+    if (Number.isFinite(parsedLegacy)) return parsedLegacy;
+  }
+
+  return NaN;
+}
+
+function normaliseTrade(trade) {
+  const ts = getTradeTimestampMs(trade);
+  if (!Number.isFinite(ts)) return trade;
+
+  // Always keep an ISO `time` so new code can read legacy rows after restart
+  return {
+    ...trade,
+    time: new Date(ts).toISOString(),
+  };
+}
+
 // ----- עזר לדיסק -----
 
 function ensureStateDir() {
@@ -37,7 +68,7 @@ function loadHistoryFromDisk() {
     }
 
     const parsed = JSON.parse(raw);
-    trades = Array.isArray(parsed) ? parsed : [];
+    trades = Array.isArray(parsed) ? parsed.map(normaliseTrade) : [];
 
     // ננקה טריידים ישנים לפני חודש ונשמור שוב אם התעדכן
     const pruned = pruneOldTrades();
@@ -80,6 +111,7 @@ function initTradeHistory() {
 function addTrade(trade) {
   const t = {
     ...trade,
+    timestamp: Date.now(),
     time: new Date().toISOString(),
   };
 
@@ -119,10 +151,12 @@ function pruneOldTrades() {
   const cutoff = now - RETENTION_MS;
 
   const before = trades.length;
-  trades = trades.filter((t) => {
-    const ts = new Date(t.time).getTime();
-    return Number.isFinite(ts) && ts >= cutoff;
-  });
+  trades = trades
+    .map(normaliseTrade)
+    .filter((t) => {
+      const ts = getTradeTimestampMs(t);
+      return Number.isFinite(ts) && ts >= cutoff;
+    });
 
   return trades.length !== before;
 }
@@ -137,7 +171,7 @@ function getRecentStats(hours = 24) {
   const cutoff = now - hours * 60 * 60 * 1000;
 
   const recent = trades.filter((t) => {
-    const ts = new Date(t.time).getTime();
+    const ts = getTradeTimestampMs(t);
     return Number.isFinite(ts) && ts >= cutoff;
   });
 
