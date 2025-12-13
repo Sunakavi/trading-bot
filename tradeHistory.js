@@ -3,9 +3,12 @@ const fs = require("fs");
 const path = require("path");
 const { log } = require("./log");
 
-// תיקיה וקובץ להיסטוריה
-const STATE_DIR = "./state";
+// תיקיה וקובץ להיסטוריה (נתיב מוחלט כדי שלא ישתנה לפי CWD)
+const STATE_DIR = path.join(__dirname, "state");
 const HISTORY_FILE = path.join(STATE_DIR, "history.json");
+
+// נשמור היסטוריה של חודש אחרון
+const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 // זיכרון חי
 let trades = [];
@@ -35,6 +38,12 @@ function loadHistoryFromDisk() {
 
     const parsed = JSON.parse(raw);
     trades = Array.isArray(parsed) ? parsed : [];
+
+    // ננקה טריידים ישנים לפני חודש ונשמור שוב אם התעדכן
+    const pruned = pruneOldTrades();
+    if (pruned) {
+      saveHistoryToDisk();
+    }
   } catch (e) {
     log("[HISTORY] Failed to load history.json:", e.message);
     trades = [];
@@ -75,6 +84,7 @@ function addTrade(trade) {
   };
 
   trades.push(t);
+  pruneOldTrades();
   saveHistoryToDisk();
 
   log(
@@ -101,6 +111,20 @@ function buildStats(list) {
   }
 
   return { total, wins, losses, sumPnLPct, sumPnlValue };
+}
+
+// מחזיר true אם נמחקו טריידים ישנים
+function pruneOldTrades() {
+  const now = Date.now();
+  const cutoff = now - RETENTION_MS;
+
+  const before = trades.length;
+  trades = trades.filter((t) => {
+    const ts = new Date(t.time).getTime();
+    return Number.isFinite(ts) && ts >= cutoff;
+  });
+
+  return trades.length !== before;
 }
 
 // סטטיסטיקה כללית לשורת לוג
