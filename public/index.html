@@ -57,9 +57,15 @@
     }
     .control-actions {
       display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .control-actions-row {
+      display: flex;
       align-items: center;
       gap: 8px;
-      flex-wrap: wrap;
     }
     .pill-green {
       background: #064e3b;
@@ -426,6 +432,33 @@
       border-radius: 6px;
       padding: 8px 10px;
     }
+
+    .settings-panel {
+      display: none;
+      margin-bottom: 16px;
+      background: #0f172a;
+      border: 1px solid #1f2937;
+    }
+
+    .settings-panel.open {
+      display: block;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .text-input {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #111827;
+      color: #e5e7eb;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -442,12 +475,37 @@
         <div class="control-note">Pause safely saves state & performance so you can resume later.</div>
       </div>
       <div class="control-actions">
-        <span id="botRunBadge" class="pill pill-green">Running</span>
-        <button id="startBotBtn" class="btn btn-primary btn-small">START BOT</button>
-        <button id="stopBotBtn" class="btn btn-danger btn-small">STOP BOT</button>
+        <div class="control-actions-row">
+          <span id="botRunBadge" class="pill pill-green">Running</span>
+          <button id="startBotBtn" class="btn btn-primary btn-small">START BOT</button>
+          <button id="stopBotBtn" class="btn btn-danger btn-small">STOP BOT</button>
+        </div>
+        <button id="settingsToggleBtn" class="btn btn-outline btn-small">SETTINGS</button>
       </div>
     </div>
     <div class="status-line" id="botControlStatus"></div>
+
+    <div id="settingsPanel" class="card settings-panel">
+      <h2>Connection Settings</h2>
+      <div class="settings-grid">
+        <label class="preset-input">Binance API Key
+          <input id="binanceApiKeyInput" class="text-input" type="text" placeholder="Enter Binance API key" />
+        </label>
+        <label class="preset-input">Binance Secret Key
+          <input id="binanceApiSecretInput" class="text-input" type="password" placeholder="Enter Binance secret key" />
+        </label>
+        <label class="preset-input">Binance Base URL
+          <input id="binanceBaseUrlInput" class="text-input" type="text" placeholder="https://testnet.binance.vision" />
+        </label>
+        <label class="preset-input">TradingView Webhook URL
+          <input id="tradingViewWebhookInput" class="text-input" type="text" placeholder="https://your-webhook-url" />
+        </label>
+      </div>
+      <div class="row" style="margin-top: 10px;">
+        <button id="saveSettingsBtn" class="btn btn-primary btn-small">Save Settings</button>
+      </div>
+      <div class="status-line" id="settingsStatus"></div>
+    </div>
 
     <div class="summary-bar">
       <div class="summary-header">
@@ -772,6 +830,17 @@
     const botRunBadgeEl = document.getElementById("botRunBadge");
     const startBotBtn = document.getElementById("startBotBtn");
     const stopBotBtn = document.getElementById("stopBotBtn");
+    const settingsToggleBtn = document.getElementById("settingsToggleBtn");
+    const settingsPanelEl = document.getElementById("settingsPanel");
+    const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+    const settingsStatusEl = document.getElementById("settingsStatus");
+
+    const settingsInputs = {
+      binanceApiKey: document.getElementById("binanceApiKeyInput"),
+      binanceApiSecret: document.getElementById("binanceApiSecretInput"),
+      binanceBaseUrl: document.getElementById("binanceBaseUrlInput"),
+      tradingViewWebhookUrl: document.getElementById("tradingViewWebhookInput"),
+    };
 
     let selectedLogFile = "";
 
@@ -1564,6 +1633,50 @@
       }
     }
 
+    // --- SETTINGS ---
+    async function fetchSettings() {
+      try {
+        settingsStatusEl.textContent = "Loading settings...";
+        const res = await fetch("/api/settings");
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+
+        const settings = data.settings || {};
+        settingsInputs.binanceApiKey.value = settings.binanceApiKey || "";
+        settingsInputs.binanceApiSecret.value = settings.binanceApiSecret || "";
+        settingsInputs.binanceBaseUrl.value = settings.binanceBaseUrl || "";
+        settingsInputs.tradingViewWebhookUrl.value =
+          settings.tradingViewWebhookUrl || "";
+        settingsStatusEl.textContent = "";
+      } catch (err) {
+        settingsStatusEl.textContent = "Settings error: " + err.message;
+      }
+    }
+
+    async function saveSettings() {
+      try {
+        settingsStatusEl.textContent = "Saving settings...";
+        const payload = {
+          binanceApiKey: settingsInputs.binanceApiKey.value.trim(),
+          binanceApiSecret: settingsInputs.binanceApiSecret.value.trim(),
+          binanceBaseUrl: settingsInputs.binanceBaseUrl.value.trim(),
+          tradingViewWebhookUrl: settingsInputs.tradingViewWebhookUrl.value.trim(),
+        };
+
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        settingsStatusEl.textContent = "Settings saved successfully.";
+      } catch (err) {
+        settingsStatusEl.textContent = "Settings error: " + err.message;
+      }
+    }
+
     // --- LOGS POLLING ---
     function updateLogDownloadLink() {
       if (selectedLogFile) {
@@ -1714,6 +1827,13 @@
     startBotBtn.addEventListener("click", startBot);
     stopBotBtn.addEventListener("click", stopBot);
     document.getElementById("resetFundsBtn").addEventListener("click", resetFundsGui);
+    settingsToggleBtn.addEventListener("click", () => {
+      settingsPanelEl.classList.toggle("open");
+      if (settingsPanelEl.classList.contains("open")) {
+        fetchSettings();
+      }
+    });
+    saveSettingsBtn.addEventListener("click", saveSettings);
     applyExitPresetBtn.addEventListener("click", () => {
       const presetId = exitPresetSelectEl.value;
       if (!presetId) {

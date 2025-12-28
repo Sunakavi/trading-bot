@@ -37,7 +37,7 @@ let lastPrices = {};
 
 let SELL_SWITCH = false;
 const KILL_SWITCH = config.KILL_SWITCH;
-let activeStrategyId = 2;
+let activeStrategyId = runtimeConfig.activeStrategyId ?? 2;
 let botRunning = true;
 
 
@@ -49,6 +49,7 @@ const shared = {
   interruptNow: false, // חדש – בקשה לעצור שינה
   stopRequested: false,
   botRunning: true,
+  binanceClient: null,
 };
 
 
@@ -100,6 +101,7 @@ const binanceClient = new BinanceClient(
   config.BINANCE_API_KEY,
   config.BINANCE_API_SECRET
 );
+shared.binanceClient = binanceClient;
 
 // =======================
 // PORTFOLIO / PERFORMANCE
@@ -231,7 +233,7 @@ async function resetFunds() {
   // RESET STATE
   saveState({
     positions: {},
-    activeStrategyId: 2,
+    activeStrategyId: runtimeConfig.activeStrategyId ?? activeStrategyId,
     lastUpdateTs: Date.now(),
   });
 

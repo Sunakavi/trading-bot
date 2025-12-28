@@ -6,6 +6,12 @@ const { loadState, loadPerformance, updateState } = require("./stateManager");
 const { log } = require("./log");
 const { getStats, getMultiRangeStats } = require("./tradeHistory");
 const { config, CANDLE_RED_TRIGGER_PCT, USE_CANDLE_EXIT } = require("./config");
+const {
+  loadSettings,
+  saveSettings,
+  normalizeSettings,
+  DEFAULT_SETTINGS,
+} = require("./settingsManager");
 
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfig = {
@@ -90,6 +96,54 @@ function startHttpServer(shared = {}) {
 
   // סטטי – ה-frontend
   app.use(express.static(path.join(__dirname, "public")));
+
+  let runtimeSettings = loadSettings().settings;
+
+  function applySettings(settings) {
+    const baseUrl =
+      settings.binanceBaseUrl || DEFAULT_SETTINGS.binanceBaseUrl;
+    config.BINANCE_API_KEY = settings.binanceApiKey;
+    config.BINANCE_API_SECRET = settings.binanceApiSecret;
+    config.BINANCE_BASE_URL = baseUrl;
+    config.TRADINGVIEW_WEBHOOK_URL = settings.tradingViewWebhookUrl;
+
+    if (shared.binanceClient) {
+      shared.binanceClient.setCredentials({
+        baseURL: baseUrl,
+        apiKey: settings.binanceApiKey,
+        apiSecret: settings.binanceApiSecret,
+      });
+    }
+  }
+
+  function validateSettings(settings) {
+    if (
+      (settings.binanceApiKey && !settings.binanceApiSecret) ||
+      (!settings.binanceApiKey && settings.binanceApiSecret)
+    ) {
+      return "Both Binance API key and secret are required.";
+    }
+
+    if (settings.binanceBaseUrl) {
+      try {
+        new URL(settings.binanceBaseUrl);
+      } catch (err) {
+        return "Binance base URL must be a valid URL.";
+      }
+    }
+
+    if (settings.tradingViewWebhookUrl) {
+      try {
+        new URL(settings.tradingViewWebhookUrl);
+      } catch (err) {
+        return "TradingView webhook URL must be a valid URL.";
+      }
+    }
+
+    return null;
+  }
+
+  applySettings(runtimeSettings);
 
   function buildTradeStats() {
     try {
@@ -231,6 +285,30 @@ function startHttpServer(shared = {}) {
     });
   });
 
+  // ===== API: SETTINGS =====
+  app.get("/api/settings", (req, res) => {
+    res.json({
+      ok: true,
+      settings: runtimeSettings,
+    });
+  });
+
+  app.post("/api/settings", (req, res) => {
+    try {
+      const normalized = normalizeSettings(req.body);
+      const error = validateSettings(normalized);
+      if (error) {
+        return res.status(400).json({ ok: false, error });
+      }
+
+      runtimeSettings = saveSettings(normalized);
+      applySettings(runtimeSettings);
+      log("[API] Settings updated");
+      return res.json({ ok: true, settings: runtimeSettings });
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: "Failed to save settings" });
+    }
+  });
 
   // ===== API: עדכון קונפיג (אסטרטגיה + אינטרוול) =====
   app.post("/api/config", (req, res) => {

@@ -13,6 +13,18 @@ class BinanceClient {
     this.apiSecret = apiSecret;
   }
 
+  setCredentials({ baseURL, apiKey, apiSecret }) {
+    if (typeof baseURL === "string" && baseURL) {
+      this.baseURL = baseURL;
+    }
+    if (typeof apiKey === "string") {
+      this.apiKey = apiKey;
+    }
+    if (typeof apiSecret === "string") {
+      this.apiSecret = apiSecret;
+    }
+  }
+
   // --- API REQUESTS ---
 
   async signedRequest(method, path, params = {}) {
