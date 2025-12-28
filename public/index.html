@@ -358,6 +358,66 @@
       color: #f9fafb;
     }
 
+    .tab-header {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid #1f2937;
+      padding-bottom: 8px;
+    }
+
+    .tab-button {
+      border: 1px solid #1f2937;
+      background: #111827;
+      color: #cbd5f5;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .tab-button.active {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #f9fafb;
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .preset-inputs {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+    }
+
+    .preset-input {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+
+    .preset-input input {
+      width: 100%;
+    }
+
+    .pairing-select {
+      width: 200px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #111827;
+      color: #e5e7eb;
+      font-size: 12px;
+    }
+
     .entry-variables {
       font-size: 13px;
       color: #cbd5e1;
@@ -523,14 +583,6 @@
           <div>
             <select id="exitPresetSelect" class="num-input" style="width: 240px;">
               <option value="" selected disabled>Select exit preset...</option>
-              <option value="conservative">1 — Conservative</option>
-              <option value="aggressive-trend">2 — Aggressive Trend</option>
-              <option value="safe-scalping">3 — Safe Scalping</option>
-              <option value="momentum-rider">4 — Momentum Rider</option>
-              <option value="atr-mixed">5 — ATR Mixed (semi-dynamic)</option>
-              <option value="volatility-shield">6 — Volatility Shield</option>
-              <option value="breakout-mode">7 — Breakout Mode</option>
-              <option value="ultra-tight">8 — Ultra Tight</option>
             </select>
             <button id="applyExitPresetBtn" class="btn btn-outline btn-small" style="margin-left: 4px;">
               Apply preset
@@ -642,26 +694,56 @@
   </div>
 
     <div class="card" style="margin-top: 16px;">
-      <h2>Entry Strategy Presets</h2>
-      <p class="subtitle" style="margin-bottom: 12px;">
-        These presets adjust trend, pullback, momentum, ATR, and volume filters. Selecting one updates the bot
-        immediately for the next trading loop.
-      </p>
-      <div class="entry-variables">
-        <strong>Key entry variables:</strong> MA Fast / MA Slow, Pullback %, RSI Range, ATR Filter, Volume Surge.
+      <div class="tab-header" role="tablist">
+        <button class="tab-button active" data-tab="entry">Entry Strategy Presets</button>
+        <button class="tab-button" data-tab="exit">Exit Strategy Presets</button>
       </div>
-      <div class="strategy-table-wrapper">
-        <table class="strategy-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Purpose & Behavior</th>
-              <th>Parameters</th>
-            </tr>
-          </thead>
-          <tbody id="strategyTableBody"></tbody>
-        </table>
+
+      <div id="entryStrategyTab" class="tab-panel active">
+        <h2>Entry Strategy Presets</h2>
+        <p class="subtitle" style="margin-bottom: 12px;">
+          These presets adjust trend, pullback, momentum, ATR, and volume filters. Selecting one updates the bot
+          immediately for the next trading loop.
+        </p>
+        <div class="entry-variables">
+          <strong>Key entry variables:</strong> MA Fast / MA Slow, Pullback %, RSI Range, ATR Filter, Volume Surge.
+        </div>
+        <div class="strategy-table-wrapper">
+          <table class="strategy-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Purpose & Behavior</th>
+                <th>Run Logic</th>
+                <th>Suggested Exit Preset</th>
+                <th>Parameters</th>
+              </tr>
+            </thead>
+            <tbody id="strategyTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="exitStrategyTab" class="tab-panel">
+        <h2>Exit Strategy Presets</h2>
+        <p class="subtitle" style="margin-bottom: 12px;">
+          Tune each exit preset, save your preferred values, and quickly load them into the live Exit Settings.
+        </p>
+        <div class="strategy-table-wrapper">
+          <table class="strategy-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Purpose</th>
+                <th>Preset Values (%)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="exitStrategyTableBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -733,6 +815,12 @@
     const applyExitPresetBtn = document.getElementById("applyExitPresetBtn");
     const entryStrategySelectEl = document.getElementById("entryStrategySelect");
     const strategyTableBodyEl = document.getElementById("strategyTableBody");
+    const exitStrategyTableBodyEl = document.getElementById("exitStrategyTableBody");
+    const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+    const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
+
+    const ENTRY_EXIT_PAIR_KEY = "entryExitPairs";
+    const EXIT_PRESET_STORAGE_KEY = "exitPresetOverrides";
 
     const entryStrategies = [
       {
@@ -740,6 +828,8 @@
         name: "Conservative Trend Entry",
         purpose: "Stable trends, avoid whipsaw",
         behavior: "Few but high-quality trades",
+        logicGroup: "Trend/Pullback (Strategy 2)",
+        defaultExitPresetId: "conservative",
         parameters: [
           { label: "Fast MA", value: "20" },
           { label: "Slow MA", value: "200" },
@@ -754,6 +844,8 @@
         name: "Aggressive Trend Entry",
         purpose: "Strong trends & momentum markets",
         behavior: "Early entries on breakouts and shallow pullbacks",
+        logicGroup: "Trend/Pullback (Strategy 2)",
+        defaultExitPresetId: "aggressive-trend",
         parameters: [
           { label: "Fast MA", value: "10" },
           { label: "Slow MA", value: "50" },
@@ -768,6 +860,8 @@
         name: "Scalping Mode",
         purpose: "Small moves, sideways markets",
         behavior: "Many small, fast trades",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: "safe-scalping",
         parameters: [
           { label: "Fast MA", value: "9" },
           { label: "Slow MA", value: "21" },
@@ -782,6 +876,8 @@
         name: "Deep Pullback Entry",
         purpose: "Buy deep dips inside an uptrend",
         behavior: "Waits for larger pullbacks for discount entries",
+        logicGroup: "Trend/Pullback (Strategy 2)",
+        defaultExitPresetId: "atr-mixed",
         parameters: [
           { label: "Fast MA", value: "50" },
           { label: "Slow MA", value: "200" },
@@ -796,6 +892,8 @@
         name: "Breakout Entry",
         purpose: "Capture large upside breakouts",
         behavior: "Ignores pullbacks; enters on momentum bursts",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: "breakout-mode",
         parameters: [
           { label: "Fast MA", value: "15" },
           { label: "Slow MA", value: "50" },
@@ -810,6 +908,8 @@
         name: "Volatility Adaptive Entry (ATR-Based)",
         purpose: "Fit entries to volatility",
         behavior: "Pullback + entry thresholds scale with ATR",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: "atr-mixed",
         parameters: [
           { label: "Fast MA", value: "10" },
           { label: "Slow MA", value: "30" },
@@ -824,6 +924,8 @@
         name: "MA Slope Entry",
         purpose: "Detect the beginning of a new trend",
         behavior: "Enters when MA slopes show acceleration",
+        logicGroup: "Trend/Pullback (Strategy 2)",
+        defaultExitPresetId: "momentum-rider",
         parameters: [
           { label: "Fast MA Slope", value: "> 0.1% per candle" },
           { label: "Slow MA Slope", value: "Positive" },
@@ -838,6 +940,8 @@
         name: "EMA + ATR Core (Enhanced Version of Strategy 3)",
         purpose: "Volatility-aware swing entries",
         behavior: "Entries triggered by volatility zones around EMAs",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: "momentum-rider",
         parameters: [
           { label: "EMA", value: "20 / 50" },
           { label: "ATR Stop", value: "ATR × 1.8" },
@@ -851,6 +955,8 @@
         name: "Legacy – Golden Cross",
         purpose: "Baseline moving-average crossover",
         behavior: "Enters on SMA 12/50 crossovers",
+        logicGroup: "Golden Cross (Strategy 1)",
+        defaultExitPresetId: "conservative",
         parameters: [
           { label: "Fast MA", value: "12" },
           { label: "Slow MA", value: "50" },
@@ -865,6 +971,8 @@
         name: "Legacy – Trend/Pullback",
         purpose: "Original trend + pullback logic",
         behavior: "Trend filtered pullbacks with RSI and candle checks",
+        logicGroup: "Trend/Pullback (Strategy 2)",
+        defaultExitPresetId: "conservative",
         parameters: [
           { label: "Fast MA", value: "Config FAST_MA" },
           { label: "Slow MA", value: "Config SLOW_MA" },
@@ -879,6 +987,8 @@
         name: "Legacy – EMA + ATR",
         purpose: "EMA 9/21 crossover with volatility filter",
         behavior: "Momentum entries when crossover plus candle body > 0.7 × ATR",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: "momentum-rider",
         parameters: [
           { label: "EMA", value: "9 / 21" },
           { label: "Volatility", value: "Body > 0.7 × ATR" },
@@ -890,10 +1000,12 @@
       },
     ];
 
-    const exitPresets = [
+    const exitPresetDefaults = [
       {
         id: "conservative",
-        label: "1 — Conservative",
+        order: 1,
+        name: "Conservative",
+        purpose: "Lower risk, wider stops with moderate targets.",
         sl: 1.2,
         tp: 2.4,
         trailStart: 1.2,
@@ -902,7 +1014,9 @@
       },
       {
         id: "aggressive-trend",
-        label: "2 — Aggressive Trend",
+        order: 2,
+        name: "Aggressive Trend",
+        purpose: "Ride fast trends with tighter risk controls.",
         sl: 0.9,
         tp: 3.2,
         trailStart: 1.6,
@@ -911,7 +1025,9 @@
       },
       {
         id: "safe-scalping",
-        label: "3 — Safe Scalping",
+        order: 3,
+        name: "Safe Scalping",
+        purpose: "Quick exits for short-term scalps.",
         sl: 0.6,
         tp: 1.2,
         trailStart: 0.8,
@@ -920,7 +1036,9 @@
       },
       {
         id: "momentum-rider",
-        label: "4 — Momentum Rider",
+        order: 4,
+        name: "Momentum Rider",
+        purpose: "Let momentum breathe before trailing.",
         sl: 1.0,
         tp: 4.0,
         trailStart: 2.0,
@@ -929,7 +1047,9 @@
       },
       {
         id: "atr-mixed",
-        label: "5 — ATR Mixed (semi-dynamic)",
+        order: 5,
+        name: "ATR Mixed (semi-dynamic)",
+        purpose: "Balanced trailing with ATR-aware spacing.",
         sl: 0.6,
         tp: 1.4,
         trailStart: 2.0,
@@ -938,7 +1058,9 @@
       },
       {
         id: "volatility-shield",
-        label: "6 — Volatility Shield",
+        order: 6,
+        name: "Volatility Shield",
+        purpose: "More protection during choppy sessions.",
         sl: 1.5,
         tp: 2.5,
         trailStart: 2.2,
@@ -947,7 +1069,9 @@
       },
       {
         id: "breakout-mode",
-        label: "7 — Breakout Mode",
+        order: 7,
+        name: "Breakout Mode",
+        purpose: "Give big breakouts space to extend.",
         sl: 0.8,
         tp: 5.0,
         trailStart: 3.0,
@@ -956,7 +1080,9 @@
       },
       {
         id: "ultra-tight",
-        label: "8 — Ultra Tight",
+        order: 8,
+        name: "Ultra Tight",
+        purpose: "Minimal exposure for quick exits.",
         sl: 0.4,
         tp: 0.8,
         trailStart: 0.5,
@@ -964,6 +1090,7 @@
         candleRed: 60,
       },
     ];
+    let exitPresets = loadExitPresets(exitPresetDefaults);
 
     function applyExitPreset(id) {
       const preset = exitPresets.find((p) => p.id === id);
@@ -978,7 +1105,9 @@
       exitElems.trailDistanceInput.value = preset.trailDistance.toFixed(2);
       exitElems.candleRedInput.value = preset.candleRed.toFixed(0);
 
-      exitStatusEl.textContent = `${preset.label} loaded into fields. Click UPDATE EXIT to apply.`;
+      exitStatusEl.textContent = `${formatExitPresetLabel(
+        preset
+      )} loaded into fields. Click UPDATE EXIT to apply.`;
     }
 
     // --- HELPERS ---
@@ -1025,6 +1154,39 @@
         .replace(/'/g, "&#39;");
     }
 
+    function loadStoredJson(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return fallback;
+        const parsed = JSON.parse(raw);
+        return parsed ?? fallback;
+      } catch (err) {
+        return fallback;
+      }
+    }
+
+    function formatExitPresetLabel(preset) {
+      return `${preset.order} — ${preset.name}`;
+    }
+
+    function loadExitPresetOverrides() {
+      return loadStoredJson(EXIT_PRESET_STORAGE_KEY, {});
+    }
+
+    function saveExitPresetOverrides(overrides) {
+      localStorage.setItem(EXIT_PRESET_STORAGE_KEY, JSON.stringify(overrides));
+    }
+
+    function loadExitPresets(defaults) {
+      const overrides = loadExitPresetOverrides();
+      return defaults.map((preset) => ({
+        ...preset,
+        ...(overrides[preset.id] || {}),
+      }));
+    }
+
+    let entryExitPairs = loadStoredJson(ENTRY_EXIT_PAIR_KEY, {});
+
     function highlightLog(line) {
       let safe = escapeHtml(line);
       const highlights = [
@@ -1041,6 +1203,30 @@
       return safe;
     }
 
+    function getExitPresetById(id) {
+      return exitPresets.find((preset) => preset.id === id);
+    }
+
+    function getEntryExitPair(entryId) {
+      if (entryExitPairs[entryId]) return entryExitPairs[entryId];
+      const entry = getEntryStrategyById(entryId);
+      return entry?.defaultExitPresetId || "";
+    }
+
+    function saveEntryExitPair(entryId, presetId) {
+      if (!entryId) return;
+      if (!presetId) {
+        const { [entryId]: _, ...rest } = entryExitPairs;
+        entryExitPairs = rest;
+      } else {
+        entryExitPairs = {
+          ...entryExitPairs,
+          [entryId]: presetId,
+        };
+      }
+      localStorage.setItem(ENTRY_EXIT_PAIR_KEY, JSON.stringify(entryExitPairs));
+    }
+
     function getEntryStrategyById(id) {
       const numericId = Number(id);
       return entryStrategies.find((s) => s.id === numericId);
@@ -1049,6 +1235,34 @@
     function describeStrategy(id) {
       const meta = getEntryStrategyById(id);
       return meta ? `${meta.id} – ${meta.name}` : `ID ${id}`;
+    }
+
+    function buildExitPresetOptions(selectedId) {
+      const options = ['<option value="">No preset</option>'];
+      exitPresets.forEach((preset) => {
+        const selected = preset.id === selectedId ? "selected" : "";
+        options.push(
+          `<option value="${preset.id}" ${selected}>${escapeHtml(
+            formatExitPresetLabel(preset)
+          )}</option>`
+        );
+      });
+      return options.join("");
+    }
+
+    function renderExitPresetOptions() {
+      if (!exitPresetSelectEl) return;
+      const current = exitPresetSelectEl.value;
+      exitPresetSelectEl.innerHTML = '<option value="" selected disabled>Select exit preset...</option>';
+      exitPresets.forEach((preset) => {
+        const opt = document.createElement("option");
+        opt.value = preset.id;
+        opt.textContent = formatExitPresetLabel(preset);
+        exitPresetSelectEl.appendChild(opt);
+      });
+      if (current) {
+        exitPresetSelectEl.value = current;
+      }
     }
 
     function renderEntryStrategyOptions() {
@@ -1068,16 +1282,117 @@
         const params = s.parameters
           .map((p) => `<div><strong>${p.label}:</strong> ${p.value}</div>`)
           .join("");
+        const pairedExitId = getEntryExitPair(s.id);
+        const pairingSelect = `
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <select class="pairing-select" data-entry-id="${s.id}">
+              ${buildExitPresetOptions(pairedExitId)}
+            </select>
+            <button class="btn btn-outline btn-small" data-action="load-pair" data-entry-id="${s.id}">
+              Load exit preset
+            </button>
+          </div>
+        `;
         return `
           <tr>
             <td>${s.id}</td>
             <td>${escapeHtml(s.name)}</td>
             <td><div><strong>Purpose:</strong> ${escapeHtml(s.purpose)}</div><div><strong>Behavior:</strong> ${escapeHtml(s.behavior)}</div></td>
+            <td>${escapeHtml(s.logicGroup || "—")}</td>
+            <td>${pairingSelect}</td>
             <td>${params}</td>
           </tr>
         `;
       });
       strategyTableBodyEl.innerHTML = rows.join("");
+    }
+
+    function renderExitPresetTable() {
+      if (!exitStrategyTableBodyEl) return;
+      const rows = exitPresets.map((preset) => {
+        const values = `
+          <div class="preset-inputs">
+            <label class="preset-input">SL
+              <input type="number" step="0.1" min="0.1" max="50" value="${preset.sl}" data-field="sl" />
+            </label>
+            <label class="preset-input">TP
+              <input type="number" step="0.1" min="0.1" max="100" value="${preset.tp}" data-field="tp" />
+            </label>
+            <label class="preset-input">Trail Start
+              <input type="number" step="0.1" min="0.1" max="100" value="${preset.trailStart}" data-field="trailStart" />
+            </label>
+            <label class="preset-input">Trail Distance
+              <input type="number" step="0.1" min="0.1" max="100" value="${preset.trailDistance}" data-field="trailDistance" />
+            </label>
+            <label class="preset-input">Candle Red
+              <input type="number" step="1" min="0" max="100" value="${preset.candleRed}" data-field="candleRed" />
+            </label>
+          </div>
+        `;
+        return `
+          <tr data-exit-id="${preset.id}">
+            <td>${preset.order}</td>
+            <td>${escapeHtml(preset.name)}</td>
+            <td>${escapeHtml(preset.purpose)}</td>
+            <td>${values}</td>
+            <td>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <button class="btn btn-outline btn-small" data-action="load-exit" data-exit-id="${preset.id}">
+                  Load
+                </button>
+                <button class="btn btn-primary btn-small" data-action="save-exit" data-exit-id="${preset.id}">
+                  Save
+                </button>
+                <button class="btn btn-outline btn-small" data-action="reset-exit" data-exit-id="${preset.id}">
+                  Reset
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      exitStrategyTableBodyEl.innerHTML = rows.join("");
+    }
+
+    function readExitPresetInputs(row) {
+      const values = {};
+      const fields = ["sl", "tp", "trailStart", "trailDistance", "candleRed"];
+      fields.forEach((field) => {
+        const input = row.querySelector(`input[data-field="${field}"]`);
+        const value = input ? Number(input.value) : NaN;
+        values[field] = value;
+      });
+      return values;
+    }
+
+    function isExitPresetValid(values) {
+      return (
+        Number.isFinite(values.sl) &&
+        Number.isFinite(values.tp) &&
+        Number.isFinite(values.trailStart) &&
+        Number.isFinite(values.trailDistance) &&
+        Number.isFinite(values.candleRed) &&
+        values.sl > 0 &&
+        values.tp > 0 &&
+        values.trailStart > 0 &&
+        values.trailDistance > 0 &&
+        values.candleRed >= 0 &&
+        values.candleRed <= 100
+      );
+    }
+
+    function saveExitPreset(id, values) {
+      const overrides = loadExitPresetOverrides();
+      overrides[id] = values;
+      saveExitPresetOverrides(overrides);
+      exitPresets = loadExitPresets(exitPresetDefaults);
+    }
+
+    function resetExitPreset(id) {
+      const overrides = loadExitPresetOverrides();
+      delete overrides[id];
+      saveExitPresetOverrides(overrides);
+      exitPresets = loadExitPresets(exitPresetDefaults);
     }
 
     function updateStrategyUiFromStatus(activeId) {
@@ -1088,7 +1403,12 @@
         entryStrategySelectEl.value = meta ? String(meta.id) : "";
       }
       if (meta) {
-        strategyStatusEl.textContent = `Entry Strategy: ${meta.id} – ${meta.name}`;
+        const pairedExitId = getEntryExitPair(meta.id);
+        const pairedPreset = pairedExitId ? getExitPresetById(pairedExitId) : null;
+        const pairedExit = pairedPreset
+          ? ` • Suggested Exit: ${formatExitPresetLabel(pairedPreset)}`
+          : "";
+        strategyStatusEl.textContent = `Entry Strategy: ${meta.id} – ${meta.name}${pairedExit}`;
       } else if (activeId != null) {
         strategyStatusEl.textContent = `Entry Strategy: ${activeId}`;
       } else {
@@ -1408,6 +1728,82 @@
       }
     });
 
+    tabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.tab;
+        tabButtons.forEach((btn) => btn.classList.toggle("active", btn === button));
+        tabPanels.forEach((panel) =>
+          panel.classList.toggle("active", panel.id === `${target}StrategyTab`)
+        );
+      });
+    });
+
+    strategyTableBodyEl.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLSelectElement)) return;
+      if (!target.classList.contains("pairing-select")) return;
+      const entryId = Number(target.dataset.entryId);
+      saveEntryExitPair(entryId, target.value);
+      strategyStatusEl.textContent = `Saved pairing for Entry ${entryId}.`;
+    });
+
+    strategyTableBodyEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action !== "load-pair") return;
+      const entryId = Number(button.dataset.entryId);
+      const selectEl = strategyTableBodyEl.querySelector(
+        `select.pairing-select[data-entry-id="${entryId}"]`
+      );
+      const presetId = selectEl?.value;
+      if (!presetId) {
+        exitStatusEl.textContent = "Select an exit preset to load.";
+        return;
+      }
+      applyExitPreset(presetId);
+    });
+
+    exitStrategyTableBodyEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const action = button.dataset.action;
+      const presetId = button.dataset.exitId;
+      if (!action || !presetId) return;
+      const row = button.closest("tr");
+      if (!row) return;
+      if (action === "load-exit") {
+        applyExitPreset(presetId);
+        return;
+      }
+      if (action === "save-exit") {
+        const values = readExitPresetInputs(row);
+        if (!isExitPresetValid(values)) {
+          exitStatusEl.textContent = "Please enter valid numbers before saving.";
+          return;
+        }
+        saveExitPreset(presetId, values);
+        renderExitPresetOptions();
+        renderExitPresetTable();
+        renderEntryStrategyTable();
+        const preset = getExitPresetById(presetId);
+        exitStatusEl.textContent = preset
+          ? `${formatExitPresetLabel(preset)} saved.`
+          : "Preset saved.";
+        return;
+      }
+      if (action === "reset-exit") {
+        resetExitPreset(presetId);
+        renderExitPresetOptions();
+        renderExitPresetTable();
+        renderEntryStrategyTable();
+        const preset = getExitPresetById(presetId);
+        exitStatusEl.textContent = preset
+          ? `${formatExitPresetLabel(preset)} reset to default.`
+          : "Preset reset.";
+      }
+    });
+
     exitElems.candleEnabledInput.addEventListener("change", () => {
       exitElems.candleRedInput.disabled = !exitElems.candleEnabledInput.checked;
     });
@@ -1418,8 +1814,10 @@
       setStrategy(id);
     });
 
+    renderExitPresetOptions();
     renderEntryStrategyOptions();
     renderEntryStrategyTable();
+    renderExitPresetTable();
 
     logFileSelectEl.addEventListener("change", () => {
       selectedLogFile = logFileSelectEl.value;
