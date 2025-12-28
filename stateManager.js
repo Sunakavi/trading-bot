@@ -1,7 +1,9 @@
 // stateManager.js
 const fs = require("fs");
 const path = require("path");
-const PERFORMANCE_FILE = path.join(__dirname, "performance.json");
+const DATA_DIR = path.join(__dirname, "state");
+const PERFORMANCE_FILE = path.join(DATA_DIR, "performance.json");
+const LEGACY_PERFORMANCE_FILE = path.join(__dirname, "performance.json");
 
 // קובץ ה-STATE נשמר ליד הקבצים של הבוט
 const STATE_FILE = path.join(__dirname, "state.json");
@@ -62,6 +64,14 @@ function updateState(partialState) {
 }
 function loadPerformance() {
   try {
+    if (!fs.existsSync(PERFORMANCE_FILE) && fs.existsSync(LEGACY_PERFORMANCE_FILE)) {
+      const legacyRaw = fs.readFileSync(LEGACY_PERFORMANCE_FILE, "utf8");
+      if (legacyRaw) {
+        const legacyData = JSON.parse(legacyRaw);
+        savePerformance(legacyData);
+        return legacyData;
+      }
+    }
     if (!fs.existsSync(PERFORMANCE_FILE)) {
       return null;
     }
@@ -76,6 +86,9 @@ function loadPerformance() {
 
 function savePerformance(perf) {
   try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
     const json = JSON.stringify(perf, null, 2);
     fs.writeFileSync(PERFORMANCE_FILE, json, "utf8");
   } catch (err) {
