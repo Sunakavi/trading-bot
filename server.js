@@ -27,6 +27,81 @@ const runtimeConfig = {
   CANDLE_EXIT_ENABLED: USE_CANDLE_EXIT,
 };
 
+const ALLOWED_STRATEGY_IDS = [1, 2, 3, 101, 102, 103, 104, 105, 106, 107, 108];
+const ALLOWED_LOOP_INTERVALS = [60000, 300000, 900000]; // 60s, 5m, 15m
+
+function normalizeRuntimeConfig(input = {}) {
+  const normalized = { ...runtimeConfig };
+
+  if (input.activeStrategyId !== undefined) {
+    const id = Number(input.activeStrategyId);
+    if (ALLOWED_STRATEGY_IDS.includes(id)) {
+      normalized.activeStrategyId = id;
+    }
+  }
+
+  if (input.loopIntervalMs !== undefined) {
+    const interval = Number(input.loopIntervalMs);
+    if (ALLOWED_LOOP_INTERVALS.includes(interval)) {
+      normalized.loopIntervalMs = interval;
+    }
+  }
+
+  if (input.SL_PCT !== undefined) {
+    const sl = Number(input.SL_PCT);
+    if (sl > 0 && sl < 0.5) normalized.SL_PCT = sl;
+  }
+
+  if (input.TP_PCT !== undefined) {
+    const tp = Number(input.TP_PCT);
+    if (tp > 0 && tp < 1.0) normalized.TP_PCT = tp;
+  }
+
+  if (input.TRAIL_START_PCT !== undefined) {
+    const ts = Number(input.TRAIL_START_PCT);
+    if (ts > 0 && ts < 1.0) normalized.TRAIL_START_PCT = ts;
+  }
+
+  if (input.TRAIL_DISTANCE_PCT !== undefined) {
+    const td = Number(input.TRAIL_DISTANCE_PCT);
+    if (td > 0 && td < 1.0) normalized.TRAIL_DISTANCE_PCT = td;
+  }
+
+  if (input.CANDLE_RED_TRIGGER_PCT !== undefined) {
+    const cr = Number(input.CANDLE_RED_TRIGGER_PCT);
+    if (cr >= 0 && cr <= 1.0) normalized.CANDLE_RED_TRIGGER_PCT = cr;
+  }
+
+  if (input.CANDLE_EXIT_ENABLED !== undefined) {
+    if (typeof input.CANDLE_EXIT_ENABLED === "boolean") {
+      normalized.CANDLE_EXIT_ENABLED = input.CANDLE_EXIT_ENABLED;
+    }
+  }
+
+  return normalized;
+}
+
+function buildRuntimeConfigSnapshot() {
+  return {
+    activeStrategyId: runtimeConfig.activeStrategyId,
+    loopIntervalMs: runtimeConfig.loopIntervalMs,
+    SL_PCT: runtimeConfig.SL_PCT,
+    TP_PCT: runtimeConfig.TP_PCT,
+    TRAIL_START_PCT: runtimeConfig.TRAIL_START_PCT,
+    TRAIL_DISTANCE_PCT: runtimeConfig.TRAIL_DISTANCE_PCT,
+    CANDLE_RED_TRIGGER_PCT: runtimeConfig.CANDLE_RED_TRIGGER_PCT,
+    CANDLE_EXIT_ENABLED: runtimeConfig.CANDLE_EXIT_ENABLED,
+  };
+}
+
+function restoreRuntimeConfigFromState() {
+  const persisted = loadState();
+  if (persisted?.runtimeConfig) {
+    const normalized = normalizeRuntimeConfig(persisted.runtimeConfig);
+    Object.assign(runtimeConfig, normalized);
+  }
+}
+
 
 
 const LOG_DIR = path.join(__dirname, "logs");
@@ -99,6 +174,7 @@ function startHttpServer(shared = {}) {
   app.use(express.static(path.join(__dirname, "public")));
 
   let runtimeSettings = loadSettings().settings;
+  restoreRuntimeConfigFromState();
 
   function applySettings(settings) {
     const baseUrl =
@@ -328,8 +404,7 @@ function startHttpServer(shared = {}) {
     // אסטרטגיה
     if (body.activeStrategyId !== undefined) {
       const id = Number(body.activeStrategyId);
-      const allowedStrategyIds = [1, 2, 3, 101, 102, 103, 104, 105, 106, 107, 108];
-      if (!allowedStrategyIds.includes(id)) {
+      if (!ALLOWED_STRATEGY_IDS.includes(id)) {
         return res
           .status(400)
           .json({ ok: false, error: "Invalid strategy ID" });
@@ -343,9 +418,8 @@ function startHttpServer(shared = {}) {
 
     // אינטרוול
     if (body.loopIntervalMs !== undefined) {
-      const allowed = [60000, 300000, 900000]; // 60s, 5m, 15m
       const val = Number(body.loopIntervalMs);
-      if (!allowed.includes(val)) {
+      if (!ALLOWED_LOOP_INTERVALS.includes(val)) {
         return res
           .status(400)
           .json({ ok: false, error: "Invalid loop interval" });
@@ -447,6 +521,7 @@ function startHttpServer(shared = {}) {
     if (stateDirty) {
       updateState({
         activeStrategyId: runtimeConfig.activeStrategyId,
+        runtimeConfig: buildRuntimeConfigSnapshot(),
       });
     }
 
@@ -465,4 +540,6 @@ function startHttpServer(shared = {}) {
 module.exports = {
   startHttpServer,
   runtimeConfig,
+  buildRuntimeConfigSnapshot,
+  normalizeRuntimeConfig,
 };
