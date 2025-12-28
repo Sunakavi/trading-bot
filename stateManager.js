@@ -1,9 +1,15 @@
 // stateManager.js
 const fs = require("fs");
 const path = require("path");
-const DATA_DIR = path.join(__dirname, "state");
+const os = require("os");
+const DATA_DIR = process.env.TRADING_BOT_DATA_DIR
+  ? path.resolve(process.env.TRADING_BOT_DATA_DIR)
+  : path.join(os.homedir(), ".trading-bot");
 const PERFORMANCE_FILE = path.join(DATA_DIR, "performance.json");
-const LEGACY_PERFORMANCE_FILE = path.join(__dirname, "performance.json");
+const LEGACY_PERFORMANCE_FILES = [
+  path.join(__dirname, "performance.json"),
+  path.join(__dirname, "state", "performance.json"),
+];
 
 // קובץ ה-STATE נשמר ליד הקבצים של הבוט
 const STATE_FILE = path.join(__dirname, "state.json");
@@ -64,17 +70,17 @@ function updateState(partialState) {
 }
 function loadPerformance() {
   try {
-    if (!fs.existsSync(PERFORMANCE_FILE) && fs.existsSync(LEGACY_PERFORMANCE_FILE)) {
-      const legacyRaw = fs.readFileSync(LEGACY_PERFORMANCE_FILE, "utf8");
-      if (legacyRaw) {
+    if (!fs.existsSync(PERFORMANCE_FILE)) {
+      for (const legacyPath of LEGACY_PERFORMANCE_FILES) {
+        if (!fs.existsSync(legacyPath)) continue;
+        const legacyRaw = fs.readFileSync(legacyPath, "utf8");
+        if (!legacyRaw) continue;
         const legacyData = JSON.parse(legacyRaw);
         savePerformance(legacyData);
         return legacyData;
       }
     }
-    if (!fs.existsSync(PERFORMANCE_FILE)) {
-      return null;
-    }
+    if (!fs.existsSync(PERFORMANCE_FILE)) return null;
     const raw = fs.readFileSync(PERFORMANCE_FILE, "utf8");
     if (!raw) return null;
     return JSON.parse(raw);

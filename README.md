@@ -22,7 +22,7 @@ Smart trailing stop logic (dynamic).
 
 Candle-pattern exit confirmation.
 
-Real-time performance tracking (performance.json).
+Real-time performance tracking (~/.trading-bot/performance.json).
 
 Real-Time Controls
 Key	Function
@@ -47,7 +47,7 @@ Performance track
 Files:
 
 state.json
-performance.json
+performance.json (stored under ~/.trading-bot by default)
 state/history.json
 logs/
 
@@ -68,7 +68,8 @@ crypto-bot-testnet/
 │
 ├── logs/                   # Daily log files
 ├── state/                  # Trade history persistence
-├── performance.json        # Equity timeline
+├── ~/.trading-bot/         # Runtime data outside the repo
+│   └── performance.json    # Equity timeline
 ├── state.json              # Last bot state
 │
 ├── .env                    # API KEY + SECRET (ignored by Git)
@@ -120,7 +121,9 @@ Trade statistics
 
 All performance samples are saved automatically to:
 
-performance.json
+~/.trading-bot/performance.json
+
+You can override the storage location by setting `TRADING_BOT_DATA_DIR`.
 
 
 Perfect for graphing your equity curve later.
