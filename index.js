@@ -16,6 +16,7 @@ const {
 const { log, initLogSystem } = require("./log");
 const { sleep } = require("./utils");
 const { BinanceClient } = require("./binanceClient");
+const { StockClient } = require("./stockClient");
 const { runSymbolStrategy, initPositions } = require("./strategy");
 const { setupKeypressListener } = require("./input");
 const { initTradeHistory, getStats } = require("./tradeHistory");
@@ -49,8 +50,30 @@ const shared = {
   interruptNow: false, // חדש – בקשה לעצור שינה
   stopRequested: false,
   botRunning: true,
-  binanceClient: null,
+  marketClient: null,
 };
+
+function applyMarketConfig() {
+  config.QUOTE =
+    config.MARKET_TYPE === "stocks" ? config.STOCK_QUOTE : config.CRYPTO_QUOTE;
+}
+
+function createMarketClient() {
+  applyMarketConfig();
+
+  if (config.MARKET_TYPE === "stocks") {
+    return new StockClient({
+      quote: config.QUOTE,
+      initialCash: INITIAL_CAPITAL,
+    });
+  }
+
+  return new BinanceClient(
+    config.BINANCE_BASE_URL,
+    config.BINANCE_API_KEY,
+    config.BINANCE_API_SECRET
+  );
+}
 
 
 // =======================
@@ -95,31 +118,28 @@ setupKeypressListener(
 );
 
 
-// Binance Client
-const binanceClient = new BinanceClient(
-  config.BINANCE_BASE_URL,
-  config.BINANCE_API_KEY,
-  config.BINANCE_API_SECRET
-);
-shared.binanceClient = binanceClient;
+let marketClient = createMarketClient();
+let activeMarketType = config.MARKET_TYPE;
+shared.marketClient = marketClient;
 
 // =======================
 // PORTFOLIO / PERFORMANCE
 // =======================
 async function logPortfolio() {
   try {
-    const account = await binanceClient.getAccount();
-    const usdtBal = binanceClient.findBalance(account, config.QUOTE);
+    const account = await marketClient.getAccount();
+    const usdtBal = marketClient.findBalance(account, config.QUOTE);
     const totalUSDT = usdtBal.free + usdtBal.locked;
 
-    log("===== PORTFOLIO (USDT + top symbols) =====");
+    log(`===== PORTFOLIO (${config.QUOTE} + top symbols) =====`);
     log(`[${config.QUOTE}] free=${totalUSDT.toFixed(2)}`);
 
     let coinsValue = 0;
 
     for (const sym of activeSymbols) {
-      const base = sym.replace(config.QUOTE, "");
-      const bal = binanceClient.findBalance(account, base);
+      const base =
+        config.MARKET_TYPE === "stocks" ? sym : sym.replace(config.QUOTE, "");
+      const bal = marketClient.findBalance(account, base);
       const totalBase = bal.free + bal.locked;
       const price = lastPrices[sym] || 0;
       coinsValue += price * totalBase;
@@ -221,10 +241,10 @@ async function resetFunds() {
   const fs = require("fs");
   fs.writeFileSync("state/history.json", "[]");
 
-  // RESET PERFORMANCE TO 10000
+  // RESET PERFORMANCE TO INITIAL CAPITAL
   savePerformance({
-    initialCapital: 10000,
-    lastEquity: 10000,
+    initialCapital: INITIAL_CAPITAL,
+    lastEquity: INITIAL_CAPITAL,
     lastPnlPct: 0,
     lastUpdateTs: Date.now(),
     samples: [],
@@ -252,7 +272,7 @@ async function mainLoop() {
     log(COLORS.PURPLE + "Starting bot..." + COLORS.RESET);
 
     // בחירת סימלים
-    activeSymbols = await binanceClient.fetchTopSymbols(config);
+    activeSymbols = await marketClient.fetchTopSymbols(config);
     positions = initPositions(activeSymbols);
 
     // טעינת state מהדיסק (ללא runtimeConfig בפנים)
@@ -282,6 +302,38 @@ async function mainLoop() {
       // עדכון נתונים שנגישים לשרת ה-API
       shared.activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
       shared.botRunning = botRunning;
+
+      if (config.MARKET_TYPE !== activeMarketType) {
+        log(
+          COLORS.YELLOW +
+            `[SYSTEM] Market type change detected (${activeMarketType} → ${config.MARKET_TYPE}).` +
+            COLORS.RESET
+        );
+
+        const hasOpenPositions = Object.values(positions).some(
+          (pos) => pos.hasPosition
+        );
+
+        if (hasOpenPositions) {
+          SELL_SWITCH = true;
+          log(
+            COLORS.YELLOW +
+              "[SYSTEM] Closing open positions before switching market type." +
+              COLORS.RESET
+          );
+        } else {
+          activeMarketType = config.MARKET_TYPE;
+          marketClient = createMarketClient();
+          shared.marketClient = marketClient;
+          activeSymbols = await marketClient.fetchTopSymbols(config);
+          positions = initPositions(activeSymbols);
+          log(
+            COLORS.GREEN +
+              `[SYSTEM] Switched market type to ${config.MARKET_TYPE}` +
+              COLORS.RESET
+          );
+        }
+      }
 
       // אם הבוט במצב עצירה – נחכה לחידוש
       if (!botRunning) {
@@ -343,7 +395,7 @@ async function mainLoop() {
       
         for (const sym of activeSymbols) {
           try {
-            await binanceClient.sellMarketAll(sym, config.QUOTE);
+            await marketClient.sellMarketAll(sym, config.QUOTE);
             positions[sym] = {
               hasPosition: false,
               entryPrice: 0,
@@ -384,18 +436,17 @@ async function mainLoop() {
       // רגיל – מריץ אסטרטגיה על כל סימבול
       for (const sym of activeSymbols) {
         await runSymbolStrategy(
-        sym,
-        positions,
-        lastPrices,
-        binanceClient,
-        config,
-        KILL_SWITCH,
-        SELL_SWITCH,
-        runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
-        runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT,
-        runtimeConfig.activeStrategyId
-      );
-
+          sym,
+          positions,
+          lastPrices,
+          marketClient,
+          config,
+          KILL_SWITCH,
+          SELL_SWITCH,
+          runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+          runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT,
+          runtimeConfig.activeStrategyId
+        );
       }
 
       await logPortfolio();
@@ -403,18 +454,18 @@ async function mainLoop() {
       // לוודא ש-activeStrategyId מסונכרן לפני שמירה ל-state
       activeStrategyId = runtimeConfig.activeStrategyId;
 
-     saveState({
-  positions,
-  activeStrategyId,
-  lastUpdateTs: Date.now(),
-});
+      saveState({
+        positions,
+        activeStrategyId,
+        lastUpdateTs: Date.now(),
+      });
 
-// לוג לפי האינטרוול החי
-const waitSec = runtimeConfig.loopIntervalMs / 1000;
-log(`---- wait ${waitSec.toFixed(0)} sec ----`);
+      // לוג לפי האינטרוול החי
+      const waitSec = runtimeConfig.loopIntervalMs / 1000;
+      log(`---- wait ${waitSec.toFixed(0)} sec ----`);
 
-// המתנה שניתנת לקטיעה ע"י Shift+S / Shift+R
-await interruptibleSleep(runtimeConfig.loopIntervalMs);
+      // המתנה שניתנת לקטיעה ע"י Shift+S / Shift+R
+      await interruptibleSleep(runtimeConfig.loopIntervalMs);
 
     }
   } catch (err) {

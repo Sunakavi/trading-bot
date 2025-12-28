@@ -500,6 +500,12 @@
         <label class="preset-input">TradingView Webhook URL
           <input id="tradingViewWebhookInput" class="text-input" type="text" placeholder="https://your-webhook-url" />
         </label>
+        <label class="preset-input">Market Type
+          <select id="marketTypeInput" class="text-input">
+            <option value="crypto">Crypto (Binance)</option>
+            <option value="stocks">Stocks (Yahoo Finance)</option>
+          </select>
+        </label>
       </div>
       <div class="row" style="margin-top: 10px;">
         <button id="saveSettingsBtn" class="btn btn-primary btn-small">Save Settings</button>
@@ -840,6 +846,7 @@
       binanceApiSecret: document.getElementById("binanceApiSecretInput"),
       binanceBaseUrl: document.getElementById("binanceBaseUrlInput"),
       tradingViewWebhookUrl: document.getElementById("tradingViewWebhookInput"),
+      marketType: document.getElementById("marketTypeInput"),
     };
 
     let selectedLogFile = "";
@@ -1647,6 +1654,7 @@
         settingsInputs.binanceBaseUrl.value = settings.binanceBaseUrl || "";
         settingsInputs.tradingViewWebhookUrl.value =
           settings.tradingViewWebhookUrl || "";
+        settingsInputs.marketType.value = settings.marketType || "crypto";
         settingsStatusEl.textContent = "";
       } catch (err) {
         settingsStatusEl.textContent = "Settings error: " + err.message;
@@ -1661,6 +1669,7 @@
           binanceApiSecret: settingsInputs.binanceApiSecret.value.trim(),
           binanceBaseUrl: settingsInputs.binanceBaseUrl.value.trim(),
           tradingViewWebhookUrl: settingsInputs.tradingViewWebhookUrl.value.trim(),
+          marketType: settingsInputs.marketType.value,
         };
 
         const res = await fetch("/api/settings", {

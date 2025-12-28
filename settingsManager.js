@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = {
   binanceApiSecret: "",
   binanceBaseUrl: "https://testnet.binance.vision",
   tradingViewWebhookUrl: "",
+  marketType: "crypto",
 };
 
 function normalizeSettings(input = {}) {
@@ -23,6 +24,10 @@ function normalizeSettings(input = {}) {
         : DEFAULT_SETTINGS.binanceBaseUrl,
     tradingViewWebhookUrl:
       typeof input.tradingViewWebhookUrl === "string" ? input.tradingViewWebhookUrl : "",
+    marketType:
+      input.marketType === "stocks" || input.marketType === "crypto"
+        ? input.marketType
+        : DEFAULT_SETTINGS.marketType,
   };
 }
 

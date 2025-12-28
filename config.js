@@ -20,6 +20,7 @@ const defaultSettings = {
   binanceApiSecret: process.env.BINANCE_API_SECRET,
   binanceBaseUrl: process.env.BINANCE_BASE_URL || "https://testnet.binance.vision",
   tradingViewWebhookUrl: process.env.TRADINGVIEW_WEBHOOK_URL || "",
+  marketType: process.env.MARKET_TYPE || "crypto",
 };
 
 const { settings: storedSettings, fromFile } = loadSettings();
@@ -33,12 +34,14 @@ const config = {
   BINANCE_API_SECRET: resolvedSettings.binanceApiSecret,
   BINANCE_BASE_URL: resolvedSettings.binanceBaseUrl,
   TRADINGVIEW_WEBHOOK_URL: resolvedSettings.tradingViewWebhookUrl,
+  MARKET_TYPE: resolvedSettings.marketType === "stocks" ? "stocks" : "crypto",
+  CRYPTO_QUOTE: "USDT",
+  STOCK_QUOTE: "USD",
   
-
 
   // UNIVERSE SELECTION
   MAX_SYMBOLS: 10,
-  QUOTE: "USDT",
+  QUOTE: resolvedSettings.marketType === "stocks" ? "USD" : "USDT",
   EXCLUDE_KEYWORDS: [
     "UP",
     "DOWN",
