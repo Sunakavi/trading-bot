@@ -728,12 +728,8 @@
           <span class="label">Actions:</span>
           <div>
             <button class="btn btn-danger btn-small" onclick="killSwitch()">SELL ALL NOW</button>
-            <button id="resetFundsBtn" class="btn btn-outline btn-small" style="margin-left: 6px;">
-              RESET FUNDS (10,000 USDT)
-            </button>
           </div>
         </div>
-        <div class="status-line" id="resetFundsStatus"></div>
       </div>
 
       <!-- RIGHT: LOG VIEWER -->
@@ -825,7 +821,6 @@
 
     const strategyStatusEl = document.getElementById("strategyStatus");
     const intervalStatusEl = document.getElementById("intervalStatus");
-    const resetFundsStatusEl = document.getElementById("resetFundsStatus");
     const logContainerEl = document.getElementById("logContainer");
     const logStatusPillEl = document.getElementById("logStatusPill");
     const logFileSelectEl = document.getElementById("logFileSelect");
@@ -1821,21 +1816,8 @@
       }
     }
 
-    async function resetFundsGui() {
-      try {
-        resetFundsStatusEl.textContent = "Sending RESET FUNDS...";
-        const res = await fetch("/api/resetFunds", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
-        resetFundsStatusEl.textContent = "→ " + (data.message || "RESET FUNDS REQUESTED");
-      } catch (err) {
-        resetFundsStatusEl.textContent = "Error: " + err.message;
-      }
-    }
-
     startBotBtn.addEventListener("click", startBot);
     stopBotBtn.addEventListener("click", stopBot);
-    document.getElementById("resetFundsBtn").addEventListener("click", resetFundsGui);
     settingsToggleBtn.addEventListener("click", () => {
       settingsPanelEl.classList.toggle("open");
       if (settingsPanelEl.classList.contains("open")) {

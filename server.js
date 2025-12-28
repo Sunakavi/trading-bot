@@ -4,7 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const { loadState, loadPerformance, updateState } = require("./stateManager");
 const { log } = require("./log");
-const { getStats, getMultiRangeStats } = require("./tradeHistory");
+const { initTradeHistory, getStats, getMultiRangeStats } = require("./tradeHistory");
 const { config, CANDLE_RED_TRIGGER_PCT, USE_CANDLE_EXIT } = require("./config");
 const {
   loadSettings,
@@ -91,6 +91,7 @@ function getLatestLogLines(maxLines = 200, fileName = "") {
 }
 
 function startHttpServer(shared = {}) {
+  initTradeHistory();
   const app = express();
   app.use(express.json());
 
