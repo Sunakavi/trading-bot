@@ -106,9 +106,12 @@ function startHttpServer(shared = {}) {
     config.BINANCE_API_SECRET = settings.binanceApiSecret;
     config.BINANCE_BASE_URL = baseUrl;
     config.TRADINGVIEW_WEBHOOK_URL = settings.tradingViewWebhookUrl;
+    config.MARKET_TYPE = settings.marketType === "stocks" ? "stocks" : "crypto";
+    config.QUOTE =
+      config.MARKET_TYPE === "stocks" ? config.STOCK_QUOTE : config.CRYPTO_QUOTE;
 
-    if (shared.binanceClient) {
-      shared.binanceClient.setCredentials({
+    if (shared.marketClient && config.MARKET_TYPE === "crypto") {
+      shared.marketClient.setCredentials({
         baseURL: baseUrl,
         apiKey: settings.binanceApiKey,
         apiSecret: settings.binanceApiSecret,
@@ -117,11 +120,17 @@ function startHttpServer(shared = {}) {
   }
 
   function validateSettings(settings) {
-    if (
-      (settings.binanceApiKey && !settings.binanceApiSecret) ||
-      (!settings.binanceApiKey && settings.binanceApiSecret)
-    ) {
-      return "Both Binance API key and secret are required.";
+    const marketType = settings.marketType === "stocks" ? "stocks" : "crypto";
+    if (!["crypto", "stocks"].includes(marketType)) {
+      return "Market type must be crypto or stocks.";
+    }
+    if (marketType === "crypto") {
+      if (
+        (settings.binanceApiKey && !settings.binanceApiSecret) ||
+        (!settings.binanceApiKey && settings.binanceApiSecret)
+      ) {
+        return "Both Binance API key and secret are required for crypto mode.";
+      }
     }
 
     if (settings.binanceBaseUrl) {

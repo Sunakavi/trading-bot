@@ -132,7 +132,7 @@ async function runSymbolStrategy(
   symbol,
   positions,
   lastPrices,
-  binanceClient,
+  marketClient,
   config,
   killSwitch,
   sellSwitch,
@@ -142,7 +142,7 @@ async function runSymbolStrategy(
 ) {
   try {
     // Fetch Klines
-    const candles = await binanceClient.fetchKlines(
+    const candles = await marketClient.fetchKlines(
       symbol,
       config.INTERVAL,
       config.KLINES_LIMIT
@@ -190,7 +190,7 @@ async function runSymbolStrategy(
         pos,
         last,
         prev,
-        binanceClient,
+        marketClient,
         config,
         sellSwitch,
         candleRedTriggerPct,
@@ -243,7 +243,7 @@ async function runSymbolStrategy(
           COLORS.RESET
       );
 
-      const result = await binanceClient.buyMarket(
+      const result = await marketClient.buyMarket(
         symbol,
         config.QUOTE,
         config.QUOTE_ORDER_FRACTION
@@ -275,7 +275,7 @@ async function handleExit(
   pos,
   last,
   prev,
-  binanceClient,
+  marketClient,
   config,
   sellSwitch,
   candleRedTriggerPct,
@@ -334,7 +334,7 @@ async function handleExit(
       COLORS.RESET
     );
     
-   const result = await binanceClient.sellMarketAll(symbol, config.QUOTE);
+   const result = await marketClient.sellMarketAll(symbol, config.QUOTE);
 
 if (result) {
   const exitPrice = result.avgPrice;
