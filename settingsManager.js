@@ -1,6 +1,7 @@
 // settingsManager.js
 const fs = require("fs");
 const path = require("path");
+const { loadState, updateState } = require("./stateManager");
 
 const SETTINGS_FILE = path.join(__dirname, "settings.json");
 
@@ -32,18 +33,51 @@ function normalizeSettings(input = {}) {
 }
 
 function loadSettings() {
+  const fallbackFromState = () => {
+    const persisted = loadState();
+    if (persisted?.settings) {
+      return normalizeSettings(persisted.settings);
+    }
+    return null;
+  };
+
+  const writeSettingsFile = (settings) => {
+    try {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf8");
+      return true;
+    } catch (err) {
+      console.error("[SETTINGS] Failed to persist fallback settings:", err.message);
+      return false;
+    }
+  };
+
   try {
     if (!fs.existsSync(SETTINGS_FILE)) {
+      const fallback = fallbackFromState();
+      if (fallback) {
+        writeSettingsFile(fallback);
+        return { settings: fallback, fromFile: false, fromState: true };
+      }
       return { settings: { ...DEFAULT_SETTINGS }, fromFile: false };
     }
     const raw = fs.readFileSync(SETTINGS_FILE, "utf8");
     if (!raw.trim()) {
+      const fallback = fallbackFromState();
+      if (fallback) {
+        writeSettingsFile(fallback);
+        return { settings: fallback, fromFile: false, fromState: true };
+      }
       return { settings: { ...DEFAULT_SETTINGS }, fromFile: false };
     }
     const parsed = JSON.parse(raw);
     return { settings: normalizeSettings(parsed), fromFile: true };
   } catch (err) {
     console.error("[SETTINGS] Failed to load settings:", err.message);
+    const fallback = fallbackFromState();
+    if (fallback) {
+      writeSettingsFile(fallback);
+      return { settings: fallback, fromFile: false, fromState: true };
+    }
     return { settings: { ...DEFAULT_SETTINGS }, fromFile: false };
   }
 }
@@ -51,6 +85,7 @@ function loadSettings() {
 function saveSettings(settings) {
   const normalized = normalizeSettings(settings);
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(normalized, null, 2), "utf8");
+  updateState({ settings: normalized });
   return normalized;
 }
 

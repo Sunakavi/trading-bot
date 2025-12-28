@@ -27,7 +27,13 @@ const {
   savePerformance,
   updateState,
 } = require("./stateManager");
-const { startHttpServer, runtimeConfig } = require("./server");
+const { loadSettings } = require("./settingsManager");
+const {
+  startHttpServer,
+  runtimeConfig,
+  buildRuntimeConfigSnapshot,
+  normalizeRuntimeConfig,
+} = require("./server");
 
 // =======================
 // GLOBAL STATE
@@ -254,6 +260,8 @@ async function resetFunds() {
   saveState({
     positions: {},
     activeStrategyId: runtimeConfig.activeStrategyId ?? activeStrategyId,
+    runtimeConfig: buildRuntimeConfigSnapshot(),
+    settings: loadSettings().settings,
     lastUpdateTs: Date.now(),
   });
 
@@ -281,6 +289,20 @@ async function mainLoop() {
       if (persisted.activeStrategyId !== undefined) {
         runtimeConfig.activeStrategyId = persisted.activeStrategyId;
         activeStrategyId = persisted.activeStrategyId;
+      }
+
+      if (persisted.runtimeConfig) {
+        const normalized = normalizeRuntimeConfig(persisted.runtimeConfig);
+        Object.assign(runtimeConfig, normalized);
+        config.SL_PCT = runtimeConfig.SL_PCT ?? config.SL_PCT;
+        config.TP_PCT = runtimeConfig.TP_PCT ?? config.TP_PCT;
+        config.TRAIL_START_PCT =
+          runtimeConfig.TRAIL_START_PCT ?? config.TRAIL_START_PCT;
+        config.TRAIL_DISTANCE_PCT =
+          runtimeConfig.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT;
+        config.USE_CANDLE_EXIT =
+          runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT;
+        activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
       }
 
       if (persisted.positions) {
@@ -356,6 +378,8 @@ async function mainLoop() {
         saveState({
           positions,
           activeStrategyId,
+          runtimeConfig: buildRuntimeConfigSnapshot(),
+          settings: loadSettings().settings,
           lastUpdateTs: Date.now(),
         });
 
@@ -457,6 +481,8 @@ async function mainLoop() {
       saveState({
         positions,
         activeStrategyId,
+        runtimeConfig: buildRuntimeConfigSnapshot(),
+        settings: loadSettings().settings,
         lastUpdateTs: Date.now(),
       });
 
