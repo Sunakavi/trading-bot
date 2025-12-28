@@ -1,4 +1,5 @@
 // config.js
+const { loadSettings } = require("./settingsManager");
 
 const COLORS = {
   RESET: "\x1b[0m",
@@ -14,11 +15,24 @@ const USE_CANDLE_EXIT = false; // ברירת מחדל: יציאה ללא דרי�
 
 const INITIAL_CAPITAL = 100000; // הון התחלתי לצורך חישוב PNL
 
+const defaultSettings = {
+  binanceApiKey: process.env.BINANCE_API_KEY,
+  binanceApiSecret: process.env.BINANCE_API_SECRET,
+  binanceBaseUrl: process.env.BINANCE_BASE_URL || "https://testnet.binance.vision",
+  tradingViewWebhookUrl: process.env.TRADINGVIEW_WEBHOOK_URL || "",
+};
+
+const { settings: storedSettings, fromFile } = loadSettings();
+const resolvedSettings = fromFile
+  ? { ...defaultSettings, ...storedSettings }
+  : defaultSettings;
+
 const config = {
   // BINANCE API
-  BINANCE_API_KEY: process.env.BINANCE_API_KEY,
-  BINANCE_API_SECRET: process.env.BINANCE_API_SECRET,
-  BINANCE_BASE_URL: process.env.BINANCE_BASE_URL || "https://testnet.binance.vision",
+  BINANCE_API_KEY: resolvedSettings.binanceApiKey,
+  BINANCE_API_SECRET: resolvedSettings.binanceApiSecret,
+  BINANCE_BASE_URL: resolvedSettings.binanceBaseUrl,
+  TRADINGVIEW_WEBHOOK_URL: resolvedSettings.tradingViewWebhookUrl,
   
 
 
