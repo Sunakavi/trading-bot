@@ -1,11 +1,11 @@
 // tradeHistory.js
 const fs = require("fs");
-const path = require("path");
+const { resolveDataPath } = require("./dataDir");
 const { log } = require("./log");
 
 // תיקיה וקובץ להיסטוריה (נתיב מוחלט כדי שלא ישתנה לפי CWD)
-const STATE_DIR = path.join(__dirname, "state");
-const HISTORY_FILE = path.join(STATE_DIR, "history.json");
+const STATE_DIR = resolveDataPath("state");
+const HISTORY_FILE = resolveDataPath("state", "history.json");
 
 // נשמור היסטוריה של חודש אחרון
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;

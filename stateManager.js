@@ -1,10 +1,10 @@
 // stateManager.js
 const fs = require("fs");
-const path = require("path");
-const PERFORMANCE_FILE = path.join(__dirname, "performance.json");
+const { ensureDataDir, resolveDataPath } = require("./dataDir");
+const PERFORMANCE_FILE = resolveDataPath("performance.json");
 
 // קובץ ה-STATE נשמר ליד הקבצים של הבוט
-const STATE_FILE = path.join(__dirname, "state.json");
+const STATE_FILE = resolveDataPath("state.json");
 
 /**
  * טוען מצב מהדיסק (אם קיים).
@@ -35,6 +35,7 @@ function loadState() {
  */
 function saveState(state) {
   try {
+    ensureDataDir();
     const json = JSON.stringify(state, null, 2);
     fs.writeFileSync(STATE_FILE, json, "utf8");
   } catch (err) {
@@ -76,6 +77,7 @@ function loadPerformance() {
 
 function savePerformance(perf) {
   try {
+    ensureDataDir();
     const json = JSON.stringify(perf, null, 2);
     fs.writeFileSync(PERFORMANCE_FILE, json, "utf8");
   } catch (err) {

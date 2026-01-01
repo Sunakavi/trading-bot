@@ -73,6 +73,13 @@ settings.json is created/updated by the dashboard and mirrors .env keys.
 For stocks mode, the bot uses Yahoo Finance data and paper trading with USD as
 the quote currency. Crypto mode uses Binance Testnet.
 
+Data Persistence on Railway
+Railway containers have ephemeral disks. To persist settings/state/trades across
+deploys, set a persistent volume and point the bot at it:
+- Set `DATA_DIR` (or `RAILWAY_VOLUME_MOUNT_PATH`) to the mounted path.
+- Files persisted there: `settings.json`, `state.json`, `performance.json`,
+  `state/history.json`.
+
 Real-Time Controls
 Keyboard shortcuts (terminal):
 - Shift + S: Emergency SELL (close all positions)

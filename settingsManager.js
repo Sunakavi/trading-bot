@@ -1,9 +1,9 @@
 // settingsManager.js
 const fs = require("fs");
-const path = require("path");
+const { ensureDataDir, resolveDataPath } = require("./dataDir");
 const { loadState, updateState } = require("./stateManager");
 
-const SETTINGS_FILE = path.join(__dirname, "settings.json");
+const SETTINGS_FILE = resolveDataPath("settings.json");
 
 const DEFAULT_SETTINGS = {
   binanceApiKey: "",
@@ -43,6 +43,7 @@ function loadSettings() {
 
   const writeSettingsFile = (settings) => {
     try {
+      ensureDataDir();
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf8");
       return true;
     } catch (err) {
@@ -84,6 +85,7 @@ function loadSettings() {
 
 function saveSettings(settings) {
   const normalized = normalizeSettings(settings);
+  ensureDataDir();
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(normalized, null, 2), "utf8");
   updateState({ settings: normalized });
   return normalized;
