@@ -609,7 +609,7 @@
         <label class="preset-input">Market Type
           <select id="marketTypeInput" class="text-input">
             <option value="crypto">Crypto (Binance)</option>
-            <option value="stocks">Stocks (Alpaca Paper)</option>
+            <option value="stocks">Stocks (Alpaca Trades)</option>
           </select>
         </label>
         <label class="preset-input settings-stocks">Alpaca API Key
@@ -1708,6 +1708,7 @@
     function applyMarketTheme(target) {
       document.body.classList.toggle("theme-crypto", target === "crypto");
       document.body.classList.toggle("theme-stocks", target === "stocks");
+      setMarketTypeLock(target);
       if (sellAllBtnEl) {
         sellAllBtnEl.textContent =
           target === "stocks" ? "SELL ALL (Stocks)" : "SELL ALL (Crypto)";
@@ -1718,6 +1719,17 @@
             ? "Entry Strategy Presets - Stocks (US Equities)"
             : "Entry Strategy Presets - Crypto";
       }
+    }
+
+    function setMarketTypeLock(target) {
+      if (!settingsInputs.marketType) return;
+      const lockedMarket = target === "stocks" ? "stocks" : "crypto";
+      settingsInputs.marketType.value = lockedMarket;
+      settingsInputs.marketType.disabled = true;
+      settingsInputs.marketType.title =
+        lockedMarket === "stocks"
+          ? "Locked to Stocks (Alpaca Trades) for this tab"
+          : "Locked to Crypto (Binance) for this tab";
     }
 
     function setActiveMarket(nextMarket) {
@@ -1911,6 +1923,7 @@
         settingsInputs.tradingViewWebhookUrl.value =
           settings.tradingViewWebhookUrl || "";
         settingsInputs.marketType.value = settings.marketType || "crypto";
+        setMarketTypeLock(currentMarket);
         settingsInputs.alpacaApiKey.value = settings.alpacaApiKey || "";
         settingsInputs.alpacaApiSecret.value = settings.alpacaApiSecret || "";
         settingsInputs.alpacaTradingBaseUrl.value =
@@ -1932,7 +1945,7 @@
           binanceApiSecret: settingsInputs.binanceApiSecret.value.trim(),
           binanceBaseUrl: settingsInputs.binanceBaseUrl.value.trim(),
           tradingViewWebhookUrl: settingsInputs.tradingViewWebhookUrl.value.trim(),
-          marketType: settingsInputs.marketType.value,
+          marketType: currentMarket,
           alpacaApiKey: settingsInputs.alpacaApiKey.value.trim(),
           alpacaApiSecret: settingsInputs.alpacaApiSecret.value.trim(),
           alpacaTradingBaseUrl: settingsInputs.alpacaTradingBaseUrl.value.trim(),
