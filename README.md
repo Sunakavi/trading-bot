@@ -1,148 +1,176 @@
-📈 Crypto Trading Bot (Binance Testnet)
+Crypto Trading Bot (Binance Testnet + Stocks Paper)
 
-Automated algorithmic trading bot for Binance Testnet using
-Node.js, CCXT-like custom client, multi-strategy engine, JSON persistence, trailing-stop, RSI logic, candle-based exits, and real-time keyboard controls.
+Automated algorithmic trading bot for Binance Testnet and a Yahoo Finance-backed
+stocks paper-trading mode. Built with Node.js, a custom exchange client, a
+multi-strategy engine, JSON persistence, trailing stops, RSI logic, candle-based
+exit confirmation, a web dashboard, and real-time keyboard controls.
 
-🚀 Features
-Core Trading Engine
+Features
+- Multi-market support: crypto (Binance Testnet) or stocks (Yahoo Finance paper)
+- Strategy models with live switching (IDs 1, 2, 3, 101-108)
+- Dynamic exits: SL/TP, trailing stop, candle confirmation
+- Runtime controls: loop interval, kill switch, reset funds, strategy changes
+- State + performance persistence (state.json, performance.json, history)
+- Web dashboard + REST API for live control and monitoring
 
-Multi-strategy support:
+Strategy Models (Entry IDs)
+The engine supports the following strategy IDs. IDs 101-108 map to Strategy 2 or
+3 entry logic in code and are used by the dashboard for preset labeling/pairing.
 
-Strategy 1: SMA Golden Cross
+- 1: Golden Cross (SMA FAST_MA / SLOW_MA)
+- 2: Trend + Pullback + RSI (FAST_MA, SLOW_MA, RSI_MIN/MAX, candle pattern)
+- 3: EMA 9/21 + ATR body filter (ATR 14, body > 0.7 * ATR)
 
-Strategy 2: Trend + Pullback + RSI
+Preset IDs that map to Strategy 2 (Trend/Pullback/RSI):
+- 101: Conservative Trend Entry
+- 102: Aggressive Trend Entry
+- 104: Deep Pullback Entry
+- 107: MA Slope Entry
 
-Strategy 3: EMA9/21 + ATR Volatility Filter
+Preset IDs that map to Strategy 3 (EMA + ATR Momentum):
+- 103: Scalping Mode
+- 105: Breakout Entry
+- 106: Volatility Adaptive Entry (ATR-Based)
+- 108: EMA + ATR Core (Enhanced)
 
-Auto selection of top-volume symbols.
+Exit Models and Options
+Exit logic is shared across all strategies and can be updated live via the API
+or the dashboard.
 
-Full live data from Binance Testnet.
+- SL_PCT: Stop-loss percent (default 0.012 = 1.2%)
+- TP_PCT: Take-profit percent (default 0.024 = 2.4%)
+- TRAIL_START_PCT: Start trailing after this gain (default 0.012)
+- TRAIL_DISTANCE_PCT: Trailing stop distance (default 0.006)
+- CANDLE_EXIT_ENABLED: Require candle confirmation for exit (default false)
+- CANDLE_RED_TRIGGER_PCT: Red candle body >= % of previous body (default 0.4)
 
-Smart trailing stop logic (dynamic).
+Runtime Options (Live)
+- loopIntervalMs: 60000, 300000, 900000 (1m, 5m, 15m)
+- activeStrategyId: any ID listed above
+- Exit configuration fields listed in the section above
 
-Candle-pattern exit confirmation.
+Core Config Options
+Defined in config.js and applied at runtime.
 
-Real-time performance tracking (performance.json).
+- MARKET_TYPE: crypto or stocks
+- QUOTE_ORDER_FRACTION: fraction of quote balance per trade (default 0.5)
+- MAX_SYMBOLS: number of symbols to scan (default 10)
+- INTERVAL: candle interval (default 15m)
+- KLINES_LIMIT: candle lookback (default 250)
+- FAST_MA / SLOW_MA: MA periods for Strategy 1 and 2
+- RSI_PERIOD / RSI_MIN / RSI_MAX: RSI filter for Strategy 2
+- REQUIRE_CANDLE_PATTERN: enable candle pattern filter for Strategy 2
+
+Settings (.env + settings.json)
+settings.json is created/updated by the dashboard and mirrors .env keys.
+
+- binanceApiKey
+- binanceApiSecret
+- binanceBaseUrl (default https://testnet.binance.vision)
+- tradingViewWebhookUrl (optional)
+- marketType: crypto or stocks
+
+For stocks mode, the bot uses Yahoo Finance data and paper trading with USD as
+the quote currency. Crypto mode uses Binance Testnet.
 
 Real-Time Controls
-Key	Function
-Shift + S	Emergency SELL SWITCH – close all open positions
-Shift + R	SELL ALL + Reset PNL baseline
-1 / 2 / 3	Switch between strategies
-Ctrl + C	Exit bot
+Keyboard shortcuts (terminal):
+- Shift + S: Emergency SELL (close all positions)
+- Shift + R: SELL ALL + Reset PNL baseline
+- 1 / 2 / 3: Switch between base strategies
+- Ctrl + C: Exit bot
+
+REST API (server.js)
+- GET  /api/status
+- GET  /api/logs
+- GET  /api/logs/list
+- GET  /api/logs/download?file=YYYY-MM-DD.log
+- POST /api/kill
+- POST /api/bot/start
+- POST /api/bot/stop
+- POST /api/resetFunds
+- GET  /api/config
+- POST /api/config
+- GET  /api/settings
+- POST /api/settings
+
+Web Dashboard
+The web UI is served from public/ when you run the bot.
+- Open http://localhost:3000
+- Live control over strategy, interval, exits, kill switch, and settings
+
 State Persistence
-
 The bot stores:
-
-Active positions
-
-Selected strategy
-
-Last update timestamp
-
-Trade history
-
-Performance track
+- Active positions
+- Selected strategy and runtime config
+- Last update timestamp
+- Trade history
+- Performance samples
 
 Files:
+- state.json
+- settings.json
+- performance.json
+- state/history.json
+- logs/
 
-state.json
-performance.json
-state/history.json
-logs/
+Project Structure
+trading-bot/
+- index.js                # Main loop + server startup
+- server.js               # REST API + dashboard
+- config.js               # Global config + strategy params
+- binanceClient.js        # Binance Testnet API wrapper
+- stockClient.js          # Yahoo Finance paper-trading client
+- utils.js                # Technical indicators
+- strategy.js             # Strategy engine + execution
+- input.js                # Keyboard listener
+- settingsManager.js      # Load/save settings
+- stateManager.js         # Load/save state + performance
+- tradeHistory.js         # Per-trade tracking & stats
+- log.js                  # Logging helpers
+- public/                 # Web dashboard
+- logs/                   # Daily log files
+- state/                  # Trade history persistence
+- performance.json        # Equity timeline
+- state.json              # Last bot state
+- settings.json           # Persisted settings (generated)
+- .env                    # API keys (ignored by Git)
+- .gitignore
+- package.json
 
-
-Even after restart — the bot continues exactly from where it stopped.
-
-🏗 Project Structure
-crypto-bot-testnet/
-│
-├── index.js                # Main loop
-├── config.js               # Global config + strategy params
-├── binanceClient.js        # API Wrapper (signed + public)
-├── utils.js                # Technical indicators
-├── strategy.js             # Strategies engine + execution
-├── input.js                # Keyboard listener
-├── stateManager.js         # Load/save state + performance handling
-├── tradeHistory.js         # Per-trade tracking & PNL stats
-│
-├── logs/                   # Daily log files
-├── state/                  # Trade history persistence
-├── performance.json        # Equity timeline
-├── state.json              # Last bot state
-│
-├── .env                    # API KEY + SECRET (ignored by Git)
-├── .gitignore
-├── package.json
-
-⚙️ Installation
+Installation
 1. Clone the repository
-git clone https://github.com/Sunakavi/trading-bot.git
-cd trading-bot
+   git clone https://github.com/Sunakavi/trading-bot.git
+   cd trading-bot
 
 2. Install dependencies
-npm install
+   npm install
 
 3. Create .env file (not committed to Git)
-BINANCE_API_KEY=your_key_here
-BINANCE_API_SECRET=your_secret_here
-BINANCE_BASE_URL=https://testnet.binance.vision
+   BINANCE_API_KEY=your_key_here
+   BINANCE_API_SECRET=your_secret_here
+   BINANCE_BASE_URL=https://testnet.binance.vision
+   MARKET_TYPE=crypto
 
-▶️ Running the Bot
+Running the Bot
 node index.js
 
-
 The bot will:
+- Fetch top symbols by volume
+- Run the chosen strategy
+- Execute BUY/SELL operations
+- Log everything under logs/
+- Persist state and performance in JSON files
 
-Fetch top symbols by volume
-
-Run the chosen strategy
-
-Execute BUY/SELL operations
-
-Log everything under logs/
-
-Keep state in JSON files
-
-📊 Performance Tracking
-
-Every loop logs:
-
-Current equity
-
-PNL % from initial capital
-
-Position values
-
-Account balances
-
-Trade statistics
-
-All performance samples are saved automatically to:
-
-performance.json
-
-
-Perfect for graphing your equity curve later.
-
-⚠️ Disclaimer
-
-This project is for educational and testing use only.
-Trading cryptocurrency involves high financial risk.
-Use only on Binance Testnet unless fully validated.
-
+Disclaimer
+This project is for educational and testing use only. Trading cryptocurrency
+involves high financial risk. Use only on Binance Testnet unless fully validated.
 The authors take no responsibility for financial gains or losses.
 
-🛠 Future Enhancements
-
-Web dashboard (React/Next.js)
-
-Strategy optimization engine
-
-ML/AI signal module
-
-Multi-timeframe analysis
-
-Docker deployment
-
-Railway.cloud auto-deploy
+Future Enhancements
+- Web dashboard (React/Next.js)
+- Strategy optimization engine
+- ML/AI signal module
+- Multi-timeframe analysis
+- Docker deployment
+- Railway.cloud auto-deploy
