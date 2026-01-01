@@ -1518,6 +1518,50 @@
       return String(num);
     }
 
+    const STOCKS_ENTRY_PRESET_DISPLAY = [
+      {
+        id: "CORE_TREND",
+        name: "Core Trend",
+        logic:
+          "EMA50 > EMA200, Close > EMA50, ADX14 >= 18, RSI 45-70, Pullback to EMA50",
+        params: "EMA fast 50 | EMA slow 200 | ADX 14 | RSI 14",
+      },
+      {
+        id: "SWING_PULLBACK",
+        name: "Swing Pullback",
+        logic:
+          "EMA20 > EMA100, Pullback 0.8-3% below swing high, RSI 40-60, ATR% 1-4.5, Reclaim above EMA20",
+        params: "EMA fast 20 | EMA slow 100 | RSI 14 | ATR 14",
+      },
+      {
+        id: "AGGR_BREAKOUT",
+        name: "Aggressive Breakout",
+        logic:
+          "Breakout above 20-bar high, Volume >= 1.8x MA20, RSI 55-75, EMA20 rising or VWAP",
+        params: "EMA 20 | RSI 14 | Breakout 20 | Vol x1.8",
+      },
+    ];
+    const STOCKS_EXIT_PRESET_DISPLAY = [
+      {
+        id: "CORE_EXIT",
+        name: "Core Exit",
+        stops: "SL 1.8x ATR14 | TP none",
+        trail: "Trail 2R @ 2.5x ATR | Trend exit EMA50/EMA200",
+      },
+      {
+        id: "SWING_EXIT",
+        name: "Swing Exit",
+        stops: "SL 1.2x ATR14 | TP 2.2R",
+        trail: "Trail 1.2R @ 1.4x ATR | Time stop 18 bars (<0.6R)",
+      },
+      {
+        id: "AGGR_EXIT",
+        name: "Aggressive Exit",
+        stops: "SL 0.9x ATR14 | TP 1.6R",
+        trail: "Trail 0.8R @ 1x ATR | Invalidate 3 bars",
+      },
+    ];
+
     function renderStocksPortfolio(payload) {
       if (!stocksPortfolioEls.card) return;
       const config = payload?.strategyPortfolio;
@@ -1604,60 +1648,24 @@
       }
 
       if (stocksPortfolioEls.entryBody) {
-        const entryPresets = config.entryPresets || {};
-        const rows = Object.keys(entryPresets).map((id) => {
-          const preset = entryPresets[id] || {};
-          let logic = "";
-          if (id === "CORE_TREND") {
-            logic = `EMA${preset.emaFast} > EMA${preset.emaSlow}, Close > EMA${preset.emaFast}, ADX${preset.adxPeriod} >= ${preset.adxMin}, RSI ${preset.rsiMin}-${preset.rsiMax}, Pullback to EMA${preset.emaFast}`;
-          } else if (id === "SWING_PULLBACK") {
-            logic = `EMA${preset.emaFast} > EMA${preset.emaSlow}, Pullback ${preset.pullbackMinPct}-${preset.pullbackMaxPct}% below swing high, RSI ${preset.rsiMin}-${preset.rsiMax}, ATR% ${preset.atrPctMin}-${preset.atrPctMax}, Reclaim above EMA${preset.emaFast}`;
-          } else if (id === "AGGR_BREAKOUT") {
-            logic = `Breakout above ${preset.breakoutLookback}-bar high, Volume >= ${preset.volumeMultiplier}x MA${preset.volumeMaPeriod}, RSI ${preset.rsiMin}-${preset.rsiMax}, EMA${preset.emaPeriod} rising or VWAP`;
-          }
-          const params = [
-            preset.emaFast ? `EMA fast ${preset.emaFast}` : null,
-            preset.emaSlow ? `EMA slow ${preset.emaSlow}` : null,
-            preset.emaPeriod ? `EMA ${preset.emaPeriod}` : null,
-            preset.adxPeriod ? `ADX ${preset.adxPeriod}` : null,
-            preset.rsiPeriod ? `RSI ${preset.rsiPeriod}` : null,
-            preset.atrPeriod ? `ATR ${preset.atrPeriod}` : null,
-            preset.breakoutLookback ? `Breakout ${preset.breakoutLookback}` : null,
-            preset.volumeMultiplier ? `Vol x${preset.volumeMultiplier}` : null,
-          ].filter(Boolean).join(" | ");
-          return `
-            <tr>
-              <td><strong>${escapeHtml(preset.name || id)}</strong><br><span class="subtitle" style="margin:0;">${escapeHtml(id)}</span></td>
-              <td>${escapeHtml(logic || "-")}</td>
-              <td>${escapeHtml(params || "-")}</td>
-            </tr>
-          `;
-        });
+        const rows = STOCKS_ENTRY_PRESET_DISPLAY.map((preset) => `
+          <tr>
+            <td><strong>${escapeHtml(preset.name)}</strong><br><span class="subtitle" style="margin:0;">${escapeHtml(preset.id)}</span></td>
+            <td>${escapeHtml(preset.logic)}</td>
+            <td>${escapeHtml(preset.params)}</td>
+          </tr>
+        `);
         stocksPortfolioEls.entryBody.innerHTML = rows.join("") || "";
       }
 
       if (stocksPortfolioEls.exitBody) {
-        const exitPresets = config.exitPresets || {};
-        const rows = Object.keys(exitPresets).map((id) => {
-          const preset = exitPresets[id] || {};
-          const stopParts = [
-            preset.initialAtrMult ? `SL ${preset.initialAtrMult}x ATR${preset.atrPeriod || ""}` : null,
-            preset.takeProfitR ? `TP ${preset.takeProfitR}R` : "TP none",
-          ].filter(Boolean).join(" | ");
-          const trailParts = [
-            preset.trailStartR ? `Trail ${preset.trailStartR}R @ ${preset.trailAtrMult}x ATR` : null,
-            preset.timeStopBars ? `Time stop ${preset.timeStopBars} bars (<${preset.timeStopMinR}R)` : null,
-            preset.trendExitFastEma ? `Trend exit EMA${preset.trendExitFastEma}/EMA${preset.trendExitSlowEma}` : null,
-            preset.invalidationBars ? `Invalidate ${preset.invalidationBars} bars` : null,
-          ].filter(Boolean).join(" | ");
-          return `
-            <tr>
-              <td><strong>${escapeHtml(preset.name || id)}</strong><br><span class="subtitle" style="margin:0;">${escapeHtml(id)}</span></td>
-              <td>${escapeHtml(stopParts || "-")}</td>
-              <td>${escapeHtml(trailParts || "-")}</td>
-            </tr>
-          `;
-        });
+        const rows = STOCKS_EXIT_PRESET_DISPLAY.map((preset) => `
+          <tr>
+            <td><strong>${escapeHtml(preset.name)}</strong><br><span class="subtitle" style="margin:0;">${escapeHtml(preset.id)}</span></td>
+            <td>${escapeHtml(preset.stops)}</td>
+            <td>${escapeHtml(preset.trail)}</td>
+          </tr>
+        `);
         stocksPortfolioEls.exitBody.innerHTML = rows.join("") || "";
       }
     }
