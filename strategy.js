@@ -167,10 +167,11 @@ async function runSymbolStrategy(
     const allowEntries = options.allowEntries !== false;
     const entryStrategyId =
       Number(options.strategyId) || Number(activeStrategyId) || 2;
+    const requestedOrderFraction = Number(options.orderFraction);
     const orderFraction =
-      Number(options.orderFraction) > 0
-        ? Number(options.orderFraction)
-        : orderFraction;
+      Number.isFinite(requestedOrderFraction) && requestedOrderFraction > 0
+        ? requestedOrderFraction
+        : Number(config.QUOTE_ORDER_FRACTION) || 0;
     const exitPresetId = options.exitPresetId || null;
     const exitConfig =
       options.exitConfigResolver && options.exitPresetId
