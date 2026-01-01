@@ -1,24 +1,39 @@
 // stateManager.js
 const fs = require("fs");
 const { ensureDataDir, resolveDataPath } = require("./dataDir");
-const PERFORMANCE_FILE = resolveDataPath("performance.json");
 
-// קובץ ה-STATE נשמר ליד הקבצים של הבוט
-const STATE_FILE = resolveDataPath("state.json");
+const STATE_FILES = {
+  crypto: resolveDataPath("state.json"),
+  stocks: resolveDataPath("state.stocks.json"),
+};
 
-/**
- * טוען מצב מהדיסק (אם קיים).
- * מחזיר:
- * - אובייקט state (אם הצליח)
- * - או null אם אין קובץ / שבור
- */
-function loadState() {
+const PERFORMANCE_FILES = {
+  crypto: resolveDataPath("performance.json"),
+  stocks: resolveDataPath("performance.stocks.json"),
+};
+
+function normalizeMarket(market) {
+  return market === "stocks" ? "stocks" : "crypto";
+}
+
+function resolveStateFile(market) {
+  const key = normalizeMarket(market);
+  return STATE_FILES[key] || STATE_FILES.crypto;
+}
+
+function resolvePerformanceFile(market) {
+  const key = normalizeMarket(market);
+  return PERFORMANCE_FILES[key] || PERFORMANCE_FILES.crypto;
+}
+
+function loadState(market = "crypto") {
   try {
-    if (!fs.existsSync(STATE_FILE)) {
+    const file = resolveStateFile(market);
+    if (!fs.existsSync(file)) {
       return null;
     }
 
-    const raw = fs.readFileSync(STATE_FILE, "utf8");
+    const raw = fs.readFileSync(file, "utf8");
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
@@ -29,44 +44,39 @@ function loadState() {
   }
 }
 
-/**
- * שומר מצב לדיסק.
- * מקבל אובייקט state (למשל: { activeSymbols, positions, activeStrategyId, lastUpdateTs })
- */
-function saveState(state) {
+function saveState(state, market = "crypto") {
   try {
+    const file = resolveStateFile(market);
     ensureDataDir();
     const json = JSON.stringify(state, null, 2);
-    fs.writeFileSync(STATE_FILE, json, "utf8");
+    fs.writeFileSync(file, json, "utf8");
   } catch (err) {
     console.error("[STATE] saveState error:", err.message);
   }
 }
 
-/**
- * מעדכן חלקית את ה-state הקיים ושומר לדיסק.
- * שימושי לשינויים קטנים (למשל החלפת activeStrategyId) גם כשהבוט לא בשלב שמירה רגיל.
- */
-function updateState(partialState) {
+function updateState(partialState, market = "crypto") {
   try {
-    const current = loadState() || {};
+    const current = loadState(market) || {};
     const merged = {
       ...current,
       ...partialState,
       lastUpdateTs: Date.now(),
     };
 
-    saveState(merged);
+    saveState(merged, market);
   } catch (err) {
     console.error("[STATE] updateState error:", err.message);
   }
 }
-function loadPerformance() {
+
+function loadPerformance(market = "crypto") {
   try {
-    if (!fs.existsSync(PERFORMANCE_FILE)) {
+    const file = resolvePerformanceFile(market);
+    if (!fs.existsSync(file)) {
       return null;
     }
-    const raw = fs.readFileSync(PERFORMANCE_FILE, "utf8");
+    const raw = fs.readFileSync(file, "utf8");
     if (!raw) return null;
     return JSON.parse(raw);
   } catch (err) {
@@ -75,11 +85,12 @@ function loadPerformance() {
   }
 }
 
-function savePerformance(perf) {
+function savePerformance(perf, market = "crypto") {
   try {
+    const file = resolvePerformanceFile(market);
     ensureDataDir();
     const json = JSON.stringify(perf, null, 2);
-    fs.writeFileSync(PERFORMANCE_FILE, json, "utf8");
+    fs.writeFileSync(file, json, "utf8");
   } catch (err) {
     console.error("[PERFORMANCE] savePerformance error:", err.message);
   }

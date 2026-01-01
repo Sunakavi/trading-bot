@@ -1,26 +1,53 @@
 // tradeHistory.js
 const fs = require("fs");
+const path = require("path");
 const { resolveDataPath } = require("./dataDir");
-const { log } = require("./log");
+const { log, createMarketLogger } = require("./log");
 
-// תיקיה וקובץ להיסטוריה (נתיב מוחלט כדי שלא ישתנה לפי CWD)
-const STATE_DIR = resolveDataPath("state");
-const HISTORY_FILE = resolveDataPath("state", "history.json");
+const DEFAULT_MARKET = "crypto";
+const MARKET_KEYS = ["crypto", "stocks"];
 
-// נשמור היסטוריה של חודש אחרון
+const HISTORY_FILES = {
+  crypto: resolveDataPath("state", "history.json"),
+  stocks: resolveDataPath("state", "history.stocks.json"),
+};
+
+// Retain up to 30 days of trades
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-// זיכרון חי
-let trades = [];
+const marketStores = {};
+const marketLoggers = {
+  crypto: createMarketLogger("crypto"),
+  stocks: createMarketLogger("stocks"),
+};
 
-// ---- Utilities ----
+function normalizeMarket(market) {
+  return market === "stocks" ? "stocks" : "crypto";
+}
+
+function ensureMarketStore(market) {
+  const key = normalizeMarket(market);
+  if (!marketStores[key]) {
+    marketStores[key] = { trades: [] };
+  }
+  return marketStores[key];
+}
+
+function getHistoryFile(market) {
+  const key = normalizeMarket(market);
+  return HISTORY_FILES[key] || HISTORY_FILES.crypto;
+}
+
+function getLogger(market) {
+  const key = normalizeMarket(market);
+  return marketLoggers[key] || log;
+}
+
 function getTradeTimestampMs(trade) {
-  // Prefer ISO string stored in `time`
   const iso = trade?.time;
   const isoMs = iso ? Date.parse(iso) : NaN;
   if (Number.isFinite(isoMs)) return isoMs;
 
-  // Fallback to legacy `timestamp` key (either ms number or ISO string)
   const legacy = trade?.timestamp;
   if (legacy !== undefined) {
     const fromNumber = Number(legacy);
@@ -37,89 +64,115 @@ function normaliseTrade(trade) {
   const ts = getTradeTimestampMs(trade);
   if (!Number.isFinite(ts)) return trade;
 
-  // Always keep an ISO `time` so new code can read legacy rows after restart
   return {
     ...trade,
     time: new Date(ts).toISOString(),
   };
 }
 
-// ----- עזר לדיסק -----
-
-function ensureStateDir() {
-  if (!fs.existsSync(STATE_DIR)) {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
+function ensureStateDir(market) {
+  const historyFile = getHistoryFile(market);
+  const dir = path.dirname(historyFile);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
-function loadHistoryFromDisk() {
-  try {
-    ensureStateDir();
+function pruneOldTrades(list) {
+  const now = Date.now();
+  const cutoff = now - RETENTION_MS;
+  const before = list.length;
 
-    if (!fs.existsSync(HISTORY_FILE)) {
-      trades = [];
+  const next = list
+    .map(normaliseTrade)
+    .filter((t) => {
+      const ts = getTradeTimestampMs(t);
+      return Number.isFinite(ts) && ts >= cutoff;
+    });
+
+  return { next, pruned: next.length !== before };
+}
+
+function loadHistoryFromDisk(market) {
+  const key = normalizeMarket(market);
+  const store = ensureMarketStore(key);
+  const historyFile = getHistoryFile(key);
+  const logger = getLogger(key);
+
+  try {
+    ensureStateDir(key);
+    if (!fs.existsSync(historyFile)) {
+      store.trades = [];
       return;
     }
 
-    const raw = fs.readFileSync(HISTORY_FILE, "utf8");
+    const raw = fs.readFileSync(historyFile, "utf8");
     if (!raw.trim()) {
-      trades = [];
+      store.trades = [];
       return;
     }
 
     const parsed = JSON.parse(raw);
-    trades = Array.isArray(parsed) ? parsed.map(normaliseTrade) : [];
+    store.trades = Array.isArray(parsed) ? parsed.map(normaliseTrade) : [];
 
-    // ננקה טריידים ישנים לפני חודש ונשמור שוב אם התעדכן
-    const pruned = pruneOldTrades();
+    const { next, pruned } = pruneOldTrades(store.trades);
+    store.trades = next;
     if (pruned) {
-      saveHistoryToDisk();
+      saveHistoryToDisk(key);
     }
   } catch (e) {
-    log("[HISTORY] Failed to load history.json:", e.message);
-    trades = [];
+    logger("[HISTORY] Failed to load history:", e.message);
+    store.trades = [];
   }
 }
 
-function saveHistoryToDisk() {
+function saveHistoryToDisk(market) {
+  const key = normalizeMarket(market);
+  const store = ensureMarketStore(key);
+  const historyFile = getHistoryFile(key);
+  const logger = getLogger(key);
+
   try {
-    ensureStateDir();
+    ensureStateDir(key);
     fs.writeFileSync(
-      HISTORY_FILE,
-      JSON.stringify(trades, null, 2),
+      historyFile,
+      JSON.stringify(store.trades, null, 2),
       "utf8"
     );
   } catch (e) {
-    log("[HISTORY] Failed to save history.json:", e.message);
+    logger("[HISTORY] Failed to save history:", e.message);
   }
 }
 
-// ----- API חיצוני -----
+function initTradeHistory(market = DEFAULT_MARKET) {
+  if (market === "all") {
+    MARKET_KEYS.forEach((key) => initTradeHistory(key));
+    return;
+  }
 
-function initTradeHistory() {
-  loadHistoryFromDisk();
-  log(
-    `[HISTORY] Loaded ${trades.length} trades from ${HISTORY_FILE}`
-  );
+  const key = normalizeMarket(market);
+  const logger = getLogger(key);
+  loadHistoryFromDisk(key);
+  logger(`[HISTORY] Loaded ${ensureMarketStore(key).trades.length} trades`);
 }
 
-/**
- * addTrade({
- *   symbol, side, entry, exit, qty, pnlValue, pnlPct
- * })
- */
-function addTrade(trade) {
+function addTrade(trade, market = DEFAULT_MARKET) {
+  const key = normalizeMarket(market);
+  const store = ensureMarketStore(key);
+  const logger = getLogger(key);
+
   const t = {
     ...trade,
     timestamp: Date.now(),
     time: new Date().toISOString(),
   };
 
-  trades.push(t);
-  pruneOldTrades();
-  saveHistoryToDisk();
+  store.trades.push(t);
+  const { next } = pruneOldTrades(store.trades);
+  store.trades = next;
+  saveHistoryToDisk(key);
 
-  log(
+  logger(
     `[HISTORY] TRADE ADDED ${t.symbol} side=${t.side} pnl=${t.pnlValue?.toFixed(
       2
     )} (${t.pnlPct?.toFixed(2)}%)`
@@ -145,32 +198,18 @@ function buildStats(list) {
   return { total, wins, losses, sumPnLPct, sumPnlValue };
 }
 
-// מחזיר true אם נמחקו טריידים ישנים
-function pruneOldTrades() {
-  const now = Date.now();
-  const cutoff = now - RETENTION_MS;
-
-  const before = trades.length;
-  trades = trades
-    .map(normaliseTrade)
-    .filter((t) => {
-      const ts = getTradeTimestampMs(t);
-      return Number.isFinite(ts) && ts >= cutoff;
-    });
-
-  return trades.length !== before;
+function getStats(market = DEFAULT_MARKET) {
+  const key = normalizeMarket(market);
+  return buildStats(ensureMarketStore(key).trades);
 }
 
-// סטטיסטיקה כללית לשורת לוג
-function getStats() {
-  return buildStats(trades);
-}
-
-function getRecentStats(hours = 24) {
+function getRecentStats(hours = 24, market = DEFAULT_MARKET) {
+  const key = normalizeMarket(market);
+  const list = ensureMarketStore(key).trades;
   const now = Date.now();
   const cutoff = now - hours * 60 * 60 * 1000;
 
-  const recent = trades.filter((t) => {
+  const recent = list.filter((t) => {
     const ts = getTradeTimestampMs(t);
     return Number.isFinite(ts) && ts >= cutoff;
   });
@@ -178,17 +217,17 @@ function getRecentStats(hours = 24) {
   return buildStats(recent);
 }
 
-function getMultiRangeStats() {
+function getMultiRangeStats(market = DEFAULT_MARKET) {
   return {
-    last24h: getRecentStats(24),
-    last3d: getRecentStats(24 * 3),
-    last7d: getRecentStats(24 * 7),
+    last24h: getRecentStats(24, market),
+    last3d: getRecentStats(24 * 3, market),
+    last7d: getRecentStats(24 * 7, market),
   };
 }
 
-// אם תרצה בעתיד – גישה להיסטוריה מלאה
-function getAllTrades() {
-  return trades;
+function getAllTrades(market = DEFAULT_MARKET) {
+  const key = normalizeMarket(market);
+  return ensureMarketStore(key).trades;
 }
 
 module.exports = {

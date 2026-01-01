@@ -5,6 +5,10 @@ const path = require("path");
 const { COLORS } = require("./config");
 
 const LOG_DIR = "./logs";
+const MARKET_PREFIX = {
+  crypto: "crypto",
+  stocks: "stocks",
+};
 
 function initLogSystem() {
   if (!fs.existsSync(LOG_DIR)) {
@@ -12,15 +16,16 @@ function initLogSystem() {
   }
 }
 
-function getLogFilePath() {
+function getLogFilePath(market = "crypto") {
   const date = new Date().toISOString().slice(0, 10);
-  return path.join(LOG_DIR, `bot_${date}.log`);
+  const prefix = MARKET_PREFIX[market] || MARKET_PREFIX.crypto;
+  return path.join(LOG_DIR, `${prefix}_${date}.log`);
 }
 
-function writeLine(line) {
+function writeLine(line, market = "crypto") {
   // Use try/catch for file operations for safety
   try {
-    fs.appendFileSync(getLogFilePath(), line + "\n", "utf8");
+    fs.appendFileSync(getLogFilePath(market), line + "\n", "utf8");
   } catch (e) {
     console.error(COLORS.RED + "[LOG WRITE ERROR]" + COLORS.RESET, e.message);
   }
@@ -36,7 +41,20 @@ function log(...args) {
   const consoleLine = `[${ts}] ${args.join(" ")}`;
 
   console.log(consoleLine);
-  writeLine(fileLine);
+  writeLine(fileLine, "crypto");
 }
 
-module.exports = { log, initLogSystem };
+function createMarketLogger(market = "crypto") {
+  return (...args) => {
+    const ts = new Date().toISOString();
+    const fileLine = `[${ts}] ${args.join(" ")}`.replace(
+      /\x1b\[[0-9;]*m/g,
+      ""
+    );
+    const consoleLine = `[${ts}] ${args.join(" ")}`;
+    console.log(consoleLine);
+    writeLine(fileLine, market);
+  };
+}
+
+module.exports = { log, initLogSystem, createMarketLogger };

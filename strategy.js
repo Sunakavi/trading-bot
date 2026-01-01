@@ -35,7 +35,7 @@ function initPositions(symbols) {
 
 // STRATEGY 1: GOLDEN CROSS (uses config.FAST_MA / config.SLOW_MA)
 
-function checkEntryGoldenCross(closes, maFastPeriod, maSlowPeriod) {
+function checkEntryGoldenCross(closes, maFastPeriod, maSlowPeriod, logFn = log) {
   const fastNow = calcSMA(closes, maFastPeriod);
   const slowNow = calcSMA(closes, maSlowPeriod);
   const fastPrev = calcSMA(closes.slice(0, -1), maFastPeriod);
@@ -46,7 +46,7 @@ function checkEntryGoldenCross(closes, maFastPeriod, maSlowPeriod) {
   // Golden Cross: fast MA crosses above slow MA
   const isGoldenCross = fastPrev <= slowPrev && fastNow > slowNow;
 
-  log(
+  logFn(
     `[Entry 1 Check] fastMA=${fastNow.toFixed(
       3
     )}, slowMA=${slowNow.toFixed(3)}, Cross=${isGoldenCross}`
@@ -60,7 +60,15 @@ function checkEntryGoldenCross(closes, maFastPeriod, maSlowPeriod) {
 // STRATEGY 2: TREND/PULLBACK/RSI (Your Original Logic)
 // =========================================================
 
-function checkEntryTrendPullback(candles, closes, maFast, maSlow, rsi, config) {
+function checkEntryTrendPullback(
+  candles,
+  closes,
+  maFast,
+  maSlow,
+  rsi,
+  config,
+  logFn = log
+) {
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
   
@@ -86,7 +94,9 @@ function checkEntryTrendPullback(candles, closes, maFast, maSlow, rsi, config) {
     rsiOk &&
     (config.REQUIRE_CANDLE_PATTERN ? candleOk : true);
     
-  log(`[Entry 2 Check] Trend=${trendUp}, Pullback=${pullback}, RSI=${rsi?.toFixed(0) || "N/A"}`);
+  logFn(
+    `[Entry 2 Check] Trend=${trendUp}, Pullback=${pullback}, RSI=${rsi?.toFixed(0) || "N/A"}`
+  );
     
   return isEntryConditionMet;
 }
@@ -95,7 +105,7 @@ function checkEntryTrendPullback(candles, closes, maFast, maSlow, rsi, config) {
 // STRATEGY 3: EMA 9/21 with Volatility Filter
 // =========================================================
 
-function checkEntryEmaVolume(candles, config) {
+function checkEntryEmaVolume(candles, config, logFn = log) {
   const last = candles[candles.length - 1];
   const closes = candles.map(c => c.close);
   
@@ -118,7 +128,9 @@ function checkEntryEmaVolume(candles, config) {
   const lastBody = Math.abs(last.close - last.open);
   const volatilityOk = lastBody > 0.7 * ATR; 
   
-  log(`[Entry 3 Check] Cross=${isCrossover}, AboveEMA=${isAboveEMA}, Volatility=${volatilityOk} (ATR=${ATR.toFixed(4)})`);
+  logFn(
+    `[Entry 3 Check] Cross=${isCrossover}, AboveEMA=${isAboveEMA}, Volatility=${volatilityOk} (ATR=${ATR.toFixed(4)})`
+  );
   
   return isCrossover && isAboveEMA && volatilityOk;
 }
@@ -138,9 +150,13 @@ async function runSymbolStrategy(
   sellSwitch,
   candleRedTriggerPct,
   candleExitEnabled,
-  activeStrategyId
+  activeStrategyId,
+  market,
+  logFn = log
 ) {
   try {
+    const logger = typeof logFn === "function" ? logFn : log;
+    const log = logger;
     // Fetch Klines
     const candles = await marketClient.fetchKlines(
       symbol,
@@ -149,7 +165,7 @@ async function runSymbolStrategy(
     );
 
     if (!candles || candles.length < config.SLOW_MA) {
-      log(
+      logger(
         `[${symbol}] NOT ENOUGH CANDLES: have=${
           candles ? candles.length : 0
         }, need=${config.SLOW_MA}`
@@ -178,7 +194,7 @@ async function runSymbolStrategy(
     };
 
     if (killSwitch) {
-      log(`[${symbol}] KILL_SWITCH ON – NO TRADES`);
+      logger(`[${symbol}] KILL_SWITCH ON – NO TRADES`);
       positions[symbol] = pos;
       return;
     }
@@ -194,7 +210,9 @@ async function runSymbolStrategy(
         config,
         sellSwitch,
         candleRedTriggerPct,
-        candleExitEnabled
+        candleExitEnabled,
+        market,
+        logger
       );
     }
 
@@ -206,7 +224,8 @@ async function runSymbolStrategy(
         isEntryConditionMet = checkEntryGoldenCross(
           closes,
           config.FAST_MA,
-          config.SLOW_MA
+          config.SLOW_MA,
+          logger
         );
         break;
       case 2:
@@ -220,7 +239,8 @@ async function runSymbolStrategy(
           maFast,
           maSlow,
           rsi,
-          config
+          config,
+          logger
         );
         break;
       case 3:
@@ -228,7 +248,7 @@ async function runSymbolStrategy(
       case 105: // Breakout Entry
       case 106: // Volatility Adaptive Entry (ATR-Based)
       case 108: // EMA + ATR Core (Enhanced Version)
-        isEntryConditionMet = checkEntryEmaVolume(candles, config);
+        isEntryConditionMet = checkEntryEmaVolume(candles, config, logger);
         break;
       default:
         log(COLORS.RED + `[${symbol}] Invalid Strategy ID: ${activeStrategyId}` + COLORS.RESET);
@@ -279,8 +299,12 @@ async function handleExit(
   config,
   sellSwitch,
   candleRedTriggerPct,
-  candleExitEnabled
+  candleExitEnabled,
+  market,
+  logFn = log
 ) {
+  const logger = typeof logFn === "function" ? logFn : log;
+  const log = logger;
   const price = last.close;
   const entry = pos.entryPrice;
 
@@ -344,15 +368,18 @@ if (result) {
     const pnlValue = (exitPrice - entry) * qty;      // כי אתה תמיד LONG
     const pnlPct = ((exitPrice - entry) / entry) * 100;
 
-    addTrade({
-      symbol,
-      side: "LONG",
-      entry,
-      exit: exitPrice,
-      qty,
-      pnlValue,
-      pnlPct,
-    });
+    addTrade(
+      {
+        symbol,
+        side: "LONG",
+        entry,
+        exit: exitPrice,
+        qty,
+        pnlValue,
+        pnlPct,
+      },
+      market
+    );
   }
 
   // Reset position state

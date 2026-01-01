@@ -6,20 +6,21 @@ require("dotenv").config();
 // =======================
 // IMPORTS
 // =======================
+const fs = require("fs");
+const path = require("path");
 const {
   COLORS,
   config,
   INITIAL_CAPITAL,
-  LOOP_SLEEP_MS,
   CANDLE_RED_TRIGGER_PCT,
 } = require("./config");
-const { log, initLogSystem } = require("./log");
+const { log, initLogSystem, createMarketLogger } = require("./log");
 const { sleep } = require("./utils");
 const { BinanceClient } = require("./binanceClient");
 const { StockClient } = require("./stockClient");
 const { runSymbolStrategy, initPositions } = require("./strategy");
 const { setupKeypressListener } = require("./input");
-const { initTradeHistory, getStats } = require("./tradeHistory");
+const { getStats } = require("./tradeHistory");
 const {
   loadState,
   saveState,
@@ -30,90 +31,80 @@ const {
 const { loadSettings } = require("./settingsManager");
 const {
   startHttpServer,
-  runtimeConfig,
+  runtimeConfigCrypto,
+  runtimeConfigStocks,
   buildRuntimeConfigSnapshot,
   normalizeRuntimeConfig,
 } = require("./server");
+const { resolveDataPath } = require("./dataDir");
 
 // =======================
-// GLOBAL STATE
+// GLOBALS
 // =======================
-let positions = {};
-let activeSymbols = [];
-let lastPrices = {};
-
-let SELL_SWITCH = false;
-const KILL_SWITCH = config.KILL_SWITCH;
-let activeStrategyId = runtimeConfig.activeStrategyId ?? 2;
-let botRunning = true;
-
-
-// shared – זה עובר לשרת API
-const shared = {
-  activeStrategyId: activeStrategyId,
-  killSwitch: false,
-  resetFundsRequested: false,
-  interruptNow: false, // חדש – בקשה לעצור שינה
-  stopRequested: false,
-  botRunning: true,
-  marketClient: null,
+const MARKET_KEYS = ["crypto", "stocks"];
+const marketLoggers = {
+  crypto: createMarketLogger("crypto"),
+  stocks: createMarketLogger("stocks"),
 };
 
-function applyMarketConfig() {
-  config.QUOTE =
-    config.MARKET_TYPE === "stocks" ? config.STOCK_QUOTE : config.CRYPTO_QUOTE;
-}
+const marketConfigs = {
+  crypto: { ...config, MARKET_TYPE: "crypto", QUOTE: config.CRYPTO_QUOTE },
+  stocks: { ...config, MARKET_TYPE: "stocks", QUOTE: config.STOCK_QUOTE },
+};
 
-function createMarketClient() {
-  applyMarketConfig();
-
-  if (config.MARKET_TYPE === "stocks") {
-    return new StockClient({
-      quote: config.QUOTE,
-      apiKey: config.ALPACA_API_KEY,
-      apiSecret: config.ALPACA_API_SECRET,
-      tradingBaseUrl: config.ALPACA_TRADING_BASE_URL,
-      dataBaseUrl: config.ALPACA_DATA_BASE_URL,
-      dataFeed: config.ALPACA_DATA_FEED,
-    });
-  }
-
-  return new BinanceClient(
-    config.BINANCE_BASE_URL,
-    config.BINANCE_API_KEY,
-    config.BINANCE_API_SECRET
-  );
-}
-
+const shared = {
+  botRunning: true,
+  stopRequested: false,
+  resetFundsRequested: false,
+  markets: {
+    crypto: {
+      activeStrategyId: runtimeConfigCrypto.activeStrategyId ?? 2,
+      sellAllRequested: false,
+      interruptNow: false,
+      marketClock: {},
+      stopHandled: false,
+      resetHandled: false,
+    },
+    stocks: {
+      activeStrategyId: runtimeConfigStocks.activeStrategyId ?? 2,
+      sellAllRequested: false,
+      interruptNow: false,
+      marketClock: {},
+      stopHandled: false,
+      resetHandled: false,
+    },
+  },
+  marketClients: {},
+};
 
 // =======================
 // INITIAL SETUP
 // =======================
 initLogSystem();
-initTradeHistory();
 
-// מקשי קיצור (עובד רק מקומית, לא בענן)
+// Keyboard controls
 setupKeypressListener(
   (key) => {
     if (key.shift && key.name === "s") {
-      SELL_SWITCH = true;
-      shared.interruptNow = true; // עצור שינה
-      log(
-        COLORS.PURPLE +
-          "[SYSTEM] SELL SWITCH ACTIVATED (Shift+S)" +
-          COLORS.RESET
+      const marketShared = shared.markets.crypto;
+      marketShared.sellAllRequested = true;
+      marketShared.interruptNow = true;
+      marketLoggers.crypto(
+        COLORS.PURPLE + "[SYSTEM] SELL ALL (Shift+S)" + COLORS.RESET
       );
       return true;
     }
 
     if (key.shift && key.name === "r") {
-      SELL_SWITCH = true;
-      shared.resetFundsRequested = true; // נבצע resetFunds בלולאה
-      shared.interruptNow = true;        // עצור שינה מייד
-      log(
-        COLORS.PURPLE +
-          "[SYSTEM] RESET FUNDS REQUESTED (Shift+R)" +
-          COLORS.RESET
+      shared.resetFundsRequested = true;
+      MARKET_KEYS.forEach((market) => {
+        const marketShared = shared.markets[market];
+        marketShared.sellAllRequested = true;
+        marketShared.interruptNow = true;
+        marketShared.resetHandled = false;
+      });
+      marketLoggers.crypto(
+        COLORS.PURPLE + "[SYSTEM] RESET FUNDS REQUESTED (Shift+R)" + COLORS.RESET
       );
       return true;
     }
@@ -121,71 +112,157 @@ setupKeypressListener(
     return false;
   },
   (newId) => {
-    activeStrategyId = newId;
-    runtimeConfig.activeStrategyId = newId; // סינכרון גם ל-API
-    updateState({ activeStrategyId: newId });
+    runtimeConfigCrypto.activeStrategyId = newId;
+    shared.markets.crypto.activeStrategyId = newId;
+    updateState({ activeStrategyId: newId }, "crypto");
   }
 );
 
+// =======================
+// CLIENTS
+// =======================
+const cryptoClient = new BinanceClient(
+  config.BINANCE_BASE_URL,
+  config.BINANCE_API_KEY,
+  config.BINANCE_API_SECRET,
+  marketLoggers.crypto
+);
 
-let marketClient = createMarketClient();
-let activeMarketType = config.MARKET_TYPE;
-shared.marketClient = marketClient;
+const stocksClient = new StockClient({
+  quote: config.STOCK_QUOTE,
+  apiKey: config.ALPACA_API_KEY,
+  apiSecret: config.ALPACA_API_SECRET,
+  tradingBaseUrl: config.ALPACA_TRADING_BASE_URL,
+  dataBaseUrl: config.ALPACA_DATA_BASE_URL,
+  dataFeed: config.ALPACA_DATA_FEED,
+  logger: marketLoggers.stocks,
+});
+
+shared.marketClients = {
+  crypto: cryptoClient,
+  stocks: stocksClient,
+};
 
 // =======================
-// PORTFOLIO / PERFORMANCE
+// HELPERS
 // =======================
-async function logPortfolio() {
-  try {
-    const account = await marketClient.getAccount();
-    const usdtBal = marketClient.findBalance(account, config.QUOTE);
-    const totalUSDT = usdtBal.free + usdtBal.locked;
+function shouldInterrupt(market) {
+  const marketShared = shared.markets[market];
+  return (
+    marketShared.sellAllRequested ||
+    marketShared.interruptNow ||
+    shared.stopRequested ||
+    shared.resetFundsRequested ||
+    shared.botRunning === false
+  );
+}
 
-    log(`===== PORTFOLIO (${config.QUOTE} + top symbols) =====`);
-    log(`[${config.QUOTE}] free=${totalUSDT.toFixed(2)}`);
-
-    let coinsValue = 0;
-
-    for (const sym of activeSymbols) {
-      const base =
-        config.MARKET_TYPE === "stocks" ? sym : sym.replace(config.QUOTE, "");
-      const bal = marketClient.findBalance(account, base);
-      const totalBase = bal.free + bal.locked;
-      const price = lastPrices[sym] || 0;
-      coinsValue += price * totalBase;
-
-      log(
-        `[${base}] amount=${totalBase.toFixed(6)} ≈ ${(price * totalBase).toFixed(
-          2
-        )} ${config.QUOTE}`
-      );
-    }
-
-    const equity = totalUSDT + coinsValue;
-    log(`[EQUITY] ≈ ${equity.toFixed(2)} ${config.QUOTE}`);
-    log("==========================================");
-
-        logPerformance(equity);
-
-    const stats = getStats();
-    if (stats.total > 0) {
-      const avgPct = stats.sumPnLPct / stats.total;
-      log(
-        `[TRADES] total=${stats.total}, wins=${stats.wins}, losses=${stats.losses}, avg=${avgPct.toFixed(
-          2
-        )}%`
-      );
-    }
-  } catch (err) {
-    log(
-      COLORS.RED + "[PORTFOLIO] Error:" + COLORS.RESET,
-      err.response?.data || err.message
-    );
+async function interruptibleSleep(ms, market) {
+  const chunk = 500;
+  let elapsed = 0;
+  while (elapsed < ms) {
+    if (shouldInterrupt(market)) return;
+    const remaining = ms - elapsed;
+    const step = Math.min(chunk, remaining);
+    await sleep(step);
+    elapsed += step;
   }
 }
 
-function logPerformance(equity) {
-  let perf = loadPerformance();
+function updateRuntimeExitConfig(marketConfig, runtimeConfig) {
+  marketConfig.SL_PCT = runtimeConfig.SL_PCT ?? marketConfig.SL_PCT;
+  marketConfig.TP_PCT = runtimeConfig.TP_PCT ?? marketConfig.TP_PCT;
+  marketConfig.TRAIL_START_PCT =
+    runtimeConfig.TRAIL_START_PCT ?? marketConfig.TRAIL_START_PCT;
+  marketConfig.TRAIL_DISTANCE_PCT =
+    runtimeConfig.TRAIL_DISTANCE_PCT ?? marketConfig.TRAIL_DISTANCE_PCT;
+  marketConfig.USE_CANDLE_EXIT =
+    runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT;
+}
+
+function formatCountdown(totalSec) {
+  if (!Number.isFinite(totalSec)) return "--:--:--";
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = Math.floor(totalSec % 60);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+function markStopHandled(market) {
+  shared.markets[market].stopHandled = true;
+  const allHandled = MARKET_KEYS.every(
+    (key) => shared.markets[key].stopHandled
+  );
+  if (allHandled) {
+    shared.botRunning = false;
+    shared.stopRequested = false;
+    MARKET_KEYS.forEach((key) => {
+      shared.markets[key].stopHandled = false;
+    });
+  }
+}
+
+function markResetHandled(market) {
+  shared.markets[market].resetHandled = true;
+  const allHandled = MARKET_KEYS.every(
+    (key) => shared.markets[key].resetHandled
+  );
+  if (allHandled) {
+    shared.resetFundsRequested = false;
+    MARKET_KEYS.forEach((key) => {
+      shared.markets[key].resetHandled = false;
+    });
+  }
+}
+
+function ensureHistoryDir(filePath) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+async function resetFundsForMarket(market, runtimeConfig, logger) {
+  const historyFile =
+    market === "stocks"
+      ? resolveDataPath("state", "history.stocks.json")
+      : resolveDataPath("state", "history.json");
+
+  ensureHistoryDir(historyFile);
+  fs.writeFileSync(historyFile, "[]", "utf8");
+
+  savePerformance(
+    {
+      initialCapital: INITIAL_CAPITAL,
+      lastEquity: INITIAL_CAPITAL,
+      lastPnlPct: 0,
+      lastUpdateTs: Date.now(),
+      samples: [],
+    },
+    market
+  );
+
+  saveState(
+    {
+      positions: {},
+      activeStrategyId: runtimeConfig.activeStrategyId,
+      runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
+      settings: loadSettings().settings,
+      lastUpdateTs: Date.now(),
+    },
+    market
+  );
+
+  logger(
+    COLORS.GREEN +
+      `[RESET] ${market.toUpperCase()} history cleared, performance reset.` +
+      COLORS.RESET
+  );
+}
+
+async function logPerformance(market, equity, logger) {
+  let perf = loadPerformance(market);
   if (!perf) {
     perf = { initialCapital: INITIAL_CAPITAL, samples: [] };
   }
@@ -193,7 +270,7 @@ function logPerformance(equity) {
   const base = perf.initialCapital || INITIAL_CAPITAL;
   const pnlPct = ((equity - base) / base) * 100;
 
-  log(
+  logger(
     `[PERFORMANCE] Start=${base.toFixed(
       2
     )} | Equity=${equity.toFixed(2)} | PNL=${pnlPct.toFixed(2)}%`
@@ -206,345 +283,289 @@ function logPerformance(equity) {
     perf.lastUpdateTs = ts;
     perf.samples.push({ ts, equity, pnlPct });
 
-    savePerformance(perf);
+    savePerformance(perf, market);
   } catch (err) {
-    log(
-      COLORS.YELLOW +
-        "[PERFORMANCE] Persist failed:" +
-        COLORS.RESET,
+    logger(
+      COLORS.YELLOW + "[PERFORMANCE] Persist failed:" + COLORS.RESET,
       err.message
     );
   }
 }
 
-// =======================
-// INTERRUPTIBLE SLEEP – מאפשר לקטוע המתנה אם יש SELL_SWITCH / RESET
-// =======================
-async function interruptibleSleep(ms) {
-  const chunk = 500; // נבדוק כל חצי שנייה
-  let elapsed = 0;
-
-  while (elapsed < ms) {
-    // כל שינוי מה-GUI / מקלדת שמצדיק לופ חדש – שובר את השינה
-    if (
-      SELL_SWITCH ||
-      shared.killSwitch ||
-      shared.resetFundsRequested ||
-      shared.interruptNow ||
-      shared.stopRequested
-    ) {
-      return;
-    }
-
-    const remaining = ms - elapsed;
-    const step = Math.min(chunk, remaining);
-    await sleep(step);
-    elapsed += step;
-  }
-}
-
-
-async function resetFunds() {
-  log(COLORS.PURPLE + "[RESET] Starting full funds reset…" + COLORS.RESET);
-
-  // DELETE HISTORY
-  const fs = require("fs");
-  fs.writeFileSync("state/history.json", "[]");
-
-  // RESET PERFORMANCE TO INITIAL CAPITAL
-  savePerformance({
-    initialCapital: INITIAL_CAPITAL,
-    lastEquity: INITIAL_CAPITAL,
-    lastPnlPct: 0,
-    lastUpdateTs: Date.now(),
-    samples: [],
-  });
-
-  // RESET STATE
-  saveState({
-    positions: {},
-    activeStrategyId: runtimeConfig.activeStrategyId ?? activeStrategyId,
-    runtimeConfig: buildRuntimeConfigSnapshot(),
-    settings: loadSettings().settings,
-    lastUpdateTs: Date.now(),
-  });
-
-  log(
-    COLORS.GREEN +
-      "[RESET] Trade history cleared, performance reset to 10000, state cleared." +
-      COLORS.RESET
-  );
-}
-
-// =======================
-// MAIN LOOP
-// =======================
-async function mainLoop() {
+async function logPortfolio(market, context) {
+  const { marketClient, marketConfig, logger } = context;
   try {
-    log(COLORS.PURPLE + "Starting bot..." + COLORS.RESET);
+    const account = await marketClient.getAccount();
+    const quote = marketConfig.QUOTE;
+    const quoteBal = marketClient.findBalance(account, quote);
+    const totalQuote = quoteBal.free + quoteBal.locked;
 
-    // בחירת סימלים
-    activeSymbols = await marketClient.fetchTopSymbols(config);
-    positions = initPositions(activeSymbols);
+    logger(`===== PORTFOLIO (${quote} + top symbols) =====`);
+    logger(`[${quote}] free=${totalQuote.toFixed(2)}`);
 
-    // טעינת state מהדיסק (ללא runtimeConfig בפנים)
-    const persisted = loadState();
-    if (persisted) {
-      if (persisted.activeStrategyId !== undefined) {
-        runtimeConfig.activeStrategyId = persisted.activeStrategyId;
-        activeStrategyId = persisted.activeStrategyId;
-      }
+    let assetsValue = 0;
+    for (const sym of context.activeSymbols) {
+      const base = market === "stocks" ? sym : sym.replace(quote, "");
+      const bal = marketClient.findBalance(account, base);
+      const totalBase = bal.free + bal.locked;
+      const price = context.lastPrices[sym] || 0;
+      assetsValue += price * totalBase;
 
-      if (persisted.runtimeConfig) {
-        const normalized = normalizeRuntimeConfig(persisted.runtimeConfig);
-        Object.assign(runtimeConfig, normalized);
-        config.SL_PCT = runtimeConfig.SL_PCT ?? config.SL_PCT;
-        config.TP_PCT = runtimeConfig.TP_PCT ?? config.TP_PCT;
-        config.TRAIL_START_PCT =
-          runtimeConfig.TRAIL_START_PCT ?? config.TRAIL_START_PCT;
-        config.TRAIL_DISTANCE_PCT =
-          runtimeConfig.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT;
-        config.USE_CANDLE_EXIT =
-          runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT;
-        activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
-      }
-
-      if (persisted.positions) {
-        for (const sym of Object.keys(persisted.positions)) {
-          positions[sym] = persisted.positions[sym];
-        }
-      }
-
-      log(
-        COLORS.PURPLE +
-          "[STATE] Restored previous state" +
-          COLORS.RESET
+      logger(
+        `[${base}] amount=${totalBase.toFixed(6)} ? ${(price * totalBase).toFixed(
+          2
+        )} ${quote}`
       );
     }
 
-    while (true) {
-      botRunning = shared.botRunning;
+    const equity = totalQuote + assetsValue;
+    logger(`[EQUITY] ? ${equity.toFixed(2)} ${quote}`);
+    logger("==========================================");
 
-      // עדכון נתונים שנגישים לשרת ה-API
-      shared.activeStrategyId = runtimeConfig.activeStrategyId ?? activeStrategyId;
-      shared.botRunning = botRunning;
+    await logPerformance(market, equity, logger);
 
-      if (config.MARKET_TYPE !== activeMarketType) {
-        log(
-          COLORS.YELLOW +
-            `[SYSTEM] Market type change detected (${activeMarketType} → ${config.MARKET_TYPE}).` +
-            COLORS.RESET
-        );
+    const stats = getStats(market);
+    if (stats.total > 0) {
+      const avgPct = stats.sumPnLPct / stats.total;
+      logger(
+        `[TRADES] total=${stats.total}, wins=${stats.wins}, losses=${stats.losses}, avg=${avgPct.toFixed(
+          2
+        )}%`
+      );
+    }
+  } catch (err) {
+    logger(
+      COLORS.RED + "[PORTFOLIO] Error:" + COLORS.RESET,
+      err.response?.data || err.message
+    );
+  }
+}
 
-        const hasOpenPositions = Object.values(positions).some(
-          (pos) => pos.hasPosition
-        );
+async function sellAllPositions(market, context) {
+  const { marketConfig, marketClient, logger } = context;
+  const quote = marketConfig.QUOTE;
+  const symbols = new Set([
+    ...context.activeSymbols,
+    ...Object.keys(context.positions),
+  ]);
 
-        if (hasOpenPositions) {
-          SELL_SWITCH = true;
-          log(
-            COLORS.YELLOW +
-              "[SYSTEM] Closing open positions before switching market type." +
-              COLORS.RESET
-          );
-        } else {
-          activeMarketType = config.MARKET_TYPE;
-          marketClient = createMarketClient();
-          shared.marketClient = marketClient;
-          activeSymbols = await marketClient.fetchTopSymbols(config);
-          positions = initPositions(activeSymbols);
-          log(
-            COLORS.GREEN +
-              `[SYSTEM] Switched market type to ${config.MARKET_TYPE}` +
-              COLORS.RESET
-          );
-        }
+  for (const sym of symbols) {
+    try {
+      await marketClient.sellMarketAll(sym, quote);
+      context.positions[sym] = {
+        hasPosition: false,
+        entryPrice: 0,
+        qty: 0,
+        maxPrice: 0,
+      };
+      logger(COLORS.GREEN + `[${sym}] SOLD (SELL ALL)` + COLORS.RESET);
+    } catch (e) {
+      logger(
+        COLORS.RED + `[${sym}] SELL ERROR:` + COLORS.RESET,
+        e.response?.data || e.message
+      );
+    }
+  }
+}
+
+function updateMarketClock(marketShared, clock) {
+  const nextOpen = clock?.next_open ? Date.parse(clock.next_open) : NaN;
+  const nextClose = clock?.next_close ? Date.parse(clock.next_close) : NaN;
+  const now = Date.now();
+  const countdownSec = Number.isFinite(nextOpen)
+    ? Math.max(0, Math.floor((nextOpen - now) / 1000))
+    : null;
+
+  marketShared.marketClock = {
+    isOpen: !!clock?.is_open,
+    nextOpen: clock?.next_open || null,
+    nextClose: clock?.next_close || null,
+    countdownSec,
+    countdown: countdownSec != null ? formatCountdown(countdownSec) : null,
+  };
+}
+
+// =======================
+// MARKET LOOP
+// =======================
+async function runMarketLoop(market) {
+  const logger = marketLoggers[market];
+  const marketClient = shared.marketClients[market];
+  const runtimeConfig = market === "stocks" ? runtimeConfigStocks : runtimeConfigCrypto;
+  const marketConfig = marketConfigs[market];
+  const marketShared = shared.markets[market];
+
+  const context = {
+    market,
+    positions: {},
+    activeSymbols: [],
+    lastPrices: {},
+    marketClient,
+    marketConfig,
+    logger,
+  };
+
+  logger(COLORS.PURPLE + `[SYSTEM] Starting ${market} loop...` + COLORS.RESET);
+
+  if (market === "crypto") {
+    context.activeSymbols = await marketClient.fetchTopSymbols(marketConfig);
+    context.positions = initPositions(context.activeSymbols);
+  }
+
+  const persisted = loadState(market);
+  if (persisted) {
+    if (persisted.activeStrategyId !== undefined) {
+      runtimeConfig.activeStrategyId = persisted.activeStrategyId;
+    }
+
+    if (persisted.runtimeConfig) {
+      const normalized = normalizeRuntimeConfig(persisted.runtimeConfig, runtimeConfig);
+      Object.assign(runtimeConfig, normalized);
+    }
+
+    if (persisted.positions) {
+      const keys = Object.keys(persisted.positions);
+      if (keys.length) {
+        const nextPositions = initPositions(keys);
+        keys.forEach((sym) => {
+          nextPositions[sym] = persisted.positions[sym];
+        });
+        context.positions = nextPositions;
+        context.activeSymbols = keys;
       }
+    }
 
-      // אם הבוט במצב עצירה – נחכה לחידוש
-      if (!botRunning) {
-        shared.interruptNow = false;
-        await interruptibleSleep(1000);
-        continue;
-      }
+    logger(COLORS.PURPLE + "[STATE] Restored previous state" + COLORS.RESET);
+  }
 
-      // אם התקבלה בקשה לעצור – נשמור מצב ונעצור
-      if (shared.stopRequested) {
-        log(
-          COLORS.PURPLE +
-            "[SYSTEM] STOP requested – persisting state and pausing bot" +
-            COLORS.RESET
-        );
+  while (true) {
+    marketShared.activeStrategyId = runtimeConfig.activeStrategyId;
 
-        await logPortfolio();
+    if (shared.stopRequested) {
+      logger(
+        COLORS.PURPLE +
+          "[SYSTEM] STOP requested � persisting state and pausing bot" +
+          COLORS.RESET
+      );
 
-        activeStrategyId = runtimeConfig.activeStrategyId;
-        saveState({
-          positions,
-          activeStrategyId,
-          runtimeConfig: buildRuntimeConfigSnapshot(),
+      await logPortfolio(market, context);
+
+      saveState(
+        {
+          positions: context.positions,
+          activeStrategyId: runtimeConfig.activeStrategyId,
+          runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
           settings: loadSettings().settings,
           lastUpdateTs: Date.now(),
-        });
+        },
+        market
+      );
 
-        botRunning = false;
-        shared.botRunning = false;
-        shared.stopRequested = false;
-        shared.interruptNow = false;
-        continue;
-      }
-      if (config.MARKET_TYPE === "stocks") {
-        try {
-          const clock = await marketClient.getClock();
-          if (!clock?.is_open) {
-            log(
-              COLORS.YELLOW +
-                `[MARKET] Stocks market closed. Next open: ${
-                  clock?.next_open || "unknown"
-                }` +
-                COLORS.RESET
-            );
-            await interruptibleSleep(runtimeConfig.loopIntervalMs);
-            continue;
-          }
-        } catch (err) {
-          log(
-            COLORS.YELLOW +
-              "[MARKET] Clock check failed, skipping this loop." +
-              COLORS.RESET,
-            err.response?.data || err.message
+      marketShared.interruptNow = false;
+      markStopHandled(market);
+      await sleep(1000);
+      continue;
+    }
+
+    if (!shared.botRunning) {
+      marketShared.interruptNow = false;
+      await sleep(1000);
+      continue;
+    }
+
+    if (market === "stocks") {
+      try {
+        const clock = await marketClient.getClock();
+        updateMarketClock(marketShared, clock);
+
+        if (!clock?.is_open) {
+          const countdown = marketShared.marketClock.countdown || "--:--:--";
+          const nextOpen = clock?.next_open || "unknown";
+          logger(
+            `[STOCKS] MARKET CLOSED | opens in ${countdown} | next_open=${nextOpen} ET`
           );
-          await interruptibleSleep(runtimeConfig.loopIntervalMs);
+          await interruptibleSleep(60000, market);
           continue;
         }
-
-        const refreshed = await marketClient.fetchTopSymbols(config);
-        if (Array.isArray(refreshed) && refreshed.length > 0) {
-          const openPositions = Object.entries(positions)
-            .filter(([, pos]) => pos?.hasPosition)
-            .map(([sym]) => sym);
-          const merged = Array.from(
-            new Set([...refreshed, ...openPositions])
-          );
-          const nextPositions = initPositions(merged);
-          merged.forEach((sym) => {
-            if (positions[sym]) nextPositions[sym] = positions[sym];
-          });
-          activeSymbols = merged;
-          positions = nextPositions;
-        }
-      }
-
-
-      shared.interruptNow = false; // מתחילים איטרציה חדשה – מנקים דגל
-      log(
-        COLORS.PURPLE +
-          `[STRATEGY] Current: ${runtimeConfig.activeStrategyId}` +
-          COLORS.RESET
-      );
-      // סינכרון ערכי EXIT חיים לתוך config (ש-strategy.js משתמש בו)
-      config.SL_PCT = runtimeConfig.SL_PCT ?? config.SL_PCT;
-      config.TP_PCT = runtimeConfig.TP_PCT ?? config.TP_PCT;
-      config.TRAIL_START_PCT =
-        runtimeConfig.TRAIL_START_PCT ?? config.TRAIL_START_PCT;
-      config.TRAIL_DISTANCE_PCT =
-        runtimeConfig.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT;
-      config.USE_CANDLE_EXIT =
-        runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT;
-
-      // אם ה-API ביקש KILL
-      if (shared.killSwitch) SELL_SWITCH = true;
-
-      // SELL ALL (גלובלי)
-      if (SELL_SWITCH) {
-        log(
-          COLORS.PURPLE +
-            "[SYSTEM] GLOBAL SELL SWITCH ON" +
-            COLORS.RESET
+      } catch (err) {
+        logger(
+          COLORS.YELLOW + "[MARKET] Clock check failed, skipping this loop." + COLORS.RESET,
+          err.response?.data || err.message
         );
-      
-        for (const sym of activeSymbols) {
-          try {
-            await marketClient.sellMarketAll(sym, config.QUOTE);
-            positions[sym] = {
-              hasPosition: false,
-              entryPrice: 0,
-              qty: 0,
-              maxPrice: 0,
-            };
-            log(
-              COLORS.GREEN +
-                `[${sym}] SOLD (GLOBAL)` +
-                COLORS.RESET
-            );
-          } catch (e) {
-            log(
-              COLORS.RED +
-                `[${sym}] SELL ERROR:` +
-                COLORS.RESET,
-              e.response?.data || e.message
-            );
-          }
-        }
-
-        SELL_SWITCH = false;
-        shared.killSwitch = false;
-      if (shared.resetFundsRequested) {
-          shared.resetFundsRequested = false;
-          await resetFunds();
-      }
-        await logPortfolio();
-        const waitSecAfterSell =
-          runtimeConfig.loopIntervalMs / 1000;
-        log(
-          `---- wait ${waitSecAfterSell.toFixed(0)} sec ----`
-        );
-        await sleep(runtimeConfig.loopIntervalMs);
+        await interruptibleSleep(runtimeConfig.loopIntervalMs, market);
         continue;
       }
 
-      // רגיל – מריץ אסטרטגיה על כל סימבול
-      for (const sym of activeSymbols) {
-        await runSymbolStrategy(
-          sym,
-          positions,
-          lastPrices,
-          marketClient,
-          config,
-          KILL_SWITCH,
-          SELL_SWITCH,
-          runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
-          runtimeConfig.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT,
-          runtimeConfig.activeStrategyId
-        );
+      const refreshed = await marketClient.fetchTopSymbols(marketConfig);
+      if (Array.isArray(refreshed) && refreshed.length > 0) {
+        const openPositions = Object.entries(context.positions)
+          .filter(([, pos]) => pos?.hasPosition)
+          .map(([sym]) => sym);
+        const merged = Array.from(new Set([...refreshed, ...openPositions]));
+        const nextPositions = initPositions(merged);
+        merged.forEach((sym) => {
+          if (context.positions[sym]) nextPositions[sym] = context.positions[sym];
+        });
+        context.activeSymbols = merged;
+        context.positions = nextPositions;
+      }
+    }
+
+    marketShared.interruptNow = false;
+
+    updateRuntimeExitConfig(marketConfig, runtimeConfig);
+
+    if (marketShared.sellAllRequested) {
+      logger(COLORS.PURPLE + "[SYSTEM] SELL ALL" + COLORS.RESET);
+      await sellAllPositions(market, context);
+      marketShared.sellAllRequested = false;
+
+      if (shared.resetFundsRequested) {
+        await resetFundsForMarket(market, runtimeConfig, logger);
+        markResetHandled(market);
+        context.positions = initPositions(context.activeSymbols);
       }
 
-      await logPortfolio();
+      await logPortfolio(market, context);
+      const waitSecAfterSell = runtimeConfig.loopIntervalMs / 1000;
+      logger(`---- wait ${waitSecAfterSell.toFixed(0)} sec ----`);
+      await interruptibleSleep(runtimeConfig.loopIntervalMs, market);
+      continue;
+    }
 
-      // לוודא ש-activeStrategyId מסונכרן לפני שמירה ל-state
-      activeStrategyId = runtimeConfig.activeStrategyId;
+    for (const sym of context.activeSymbols) {
+      await runSymbolStrategy(
+        sym,
+        context.positions,
+        context.lastPrices,
+        marketClient,
+        marketConfig,
+        config.KILL_SWITCH,
+        false,
+        runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+        runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
+        runtimeConfig.activeStrategyId,
+        market,
+        logger
+      );
+    }
 
-      saveState({
-        positions,
-        activeStrategyId,
-        runtimeConfig: buildRuntimeConfigSnapshot(),
+    await logPortfolio(market, context);
+
+    saveState(
+      {
+        positions: context.positions,
+        activeStrategyId: runtimeConfig.activeStrategyId,
+        runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
         settings: loadSettings().settings,
         lastUpdateTs: Date.now(),
-      });
-
-      // לוג לפי האינטרוול החי
-      const waitSec = runtimeConfig.loopIntervalMs / 1000;
-      log(`---- wait ${waitSec.toFixed(0)} sec ----`);
-
-      // המתנה שניתנת לקטיעה ע"י Shift+S / Shift+R
-      await interruptibleSleep(runtimeConfig.loopIntervalMs);
-
-    }
-  } catch (err) {
-    log(
-      COLORS.RED + "FATAL ERROR in mainLoop:" + COLORS.RESET,
-      err.message
+      },
+      market
     );
+
+    const waitSec = runtimeConfig.loopIntervalMs / 1000;
+    logger(`---- wait ${waitSec.toFixed(0)} sec ----`);
+    await interruptibleSleep(runtimeConfig.loopIntervalMs, market);
   }
 }
 
@@ -552,4 +573,7 @@ async function mainLoop() {
 // START HTTP + BOT
 // =======================
 startHttpServer(shared);
-mainLoop();
+runMarketLoop("crypto");
+runMarketLoop("stocks");
+
+

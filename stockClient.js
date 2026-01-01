@@ -29,6 +29,7 @@ class StockClient {
     tradingBaseUrl = DEFAULT_TRADING_URL,
     dataBaseUrl = DEFAULT_DATA_URL,
     dataFeed = "iex",
+    logger = log,
   }) {
     this.quote = quote;
     this.apiKey = apiKey;
@@ -36,6 +37,7 @@ class StockClient {
     this.tradingBaseUrl = tradingBaseUrl;
     this.dataBaseUrl = dataBaseUrl;
     this.dataFeed = dataFeed;
+    this.log = logger;
   }
 
   setCredentials({ apiKey, apiSecret, tradingBaseUrl, dataBaseUrl, dataFeed }) {
@@ -79,7 +81,7 @@ class StockClient {
       }
     }
 
-    log(
+    this.log(
       COLORS.RED + `[ALPACA] ${label} failed:` + COLORS.RESET,
       lastErr?.response?.data || lastErr?.message
     );
@@ -163,20 +165,20 @@ class StockClient {
 
       const topSymbols = symbolsWithBars.slice(0, config.MAX_SYMBOLS);
       if (skipCounts.notTradable || skipCounts.otc || skipCounts.halted) {
-        log(
+        this.log(
           `[STOCKS] Skipped symbols: notTradable=${skipCounts.notTradable}, otc=${skipCounts.otc}, halted=${skipCounts.halted}`
         );
       }
 
-      log("=== TOP STOCKS (Most Actives) ===");
+      this.log("=== TOP STOCKS (Most Actives) ===");
       topSymbols.forEach((sym, i) => {
-        log(`${i + 1}. ${sym}`);
+        this.log(`${i + 1}. ${sym}`);
       });
-      log("=================================");
+      this.log("=================================");
 
       return topSymbols;
     } catch (err) {
-      log(
+      this.log(
         COLORS.RED + "[STOCKS] Failed to fetch top symbols:" + COLORS.RESET,
         err.response?.data || err.message
       );
@@ -278,7 +280,7 @@ class StockClient {
     const freeCash = parseFloat(accountRes.data?.cash || "0");
 
     if (freeCash <= 0) {
-      log(
+      this.log(
         `[${symbol}] NO ${quote} BALANCE (free=${freeCash.toFixed(2)}) => SKIP`
       );
       return null;
@@ -289,17 +291,17 @@ class StockClient {
     const qty = Math.floor(budget / price);
 
     if (qty < 1) {
-      log(
+      this.log(
         COLORS.YELLOW +
-          `[${symbol}] budget=${budget.toFixed(2)} < 1 share @ ${price.toFixed(
+          `[STOCKS][${symbol}] budget=${budget.toFixed(2)} price=${price.toFixed(
             2
-          )} => SKIP` +
+          )} => shares=0 SKIP` +
           COLORS.RESET
       );
       return null;
     }
 
-    log(
+    this.log(
       COLORS.PURPLE +
         `BUY ${symbol} qty=${qty} (~${(qty * price).toFixed(
           2
@@ -319,7 +321,7 @@ class StockClient {
     const executedQty = parseFloat(res.data?.filled_qty || "0") || qty;
     const avgPrice = parseFloat(res.data?.filled_avg_price || "0") || price;
 
-    log(
+    this.log(
       COLORS.PURPLE + "   BUY ORDER:" + COLORS.RESET,
       JSON.stringify({
         symbol,
@@ -342,13 +344,13 @@ class StockClient {
       const executedQty = parseFloat(res.data?.filled_qty || "0");
       const avgPrice = parseFloat(res.data?.filled_avg_price || "0");
 
-      log(
+      this.log(
         COLORS.GREEN +
           `SELL ${symbol} qty=${executedQty || "ALL"}` +
           COLORS.RESET
       );
 
-      log(
+      this.log(
         COLORS.GREEN + "   SELL ORDER:" + COLORS.RESET,
         JSON.stringify({
           symbol,
@@ -364,10 +366,10 @@ class StockClient {
       };
     } catch (err) {
       if (err.response?.status === 404) {
-        log(`[${symbol}] NOTHING TO SELL ${symbol}`);
+        this.log(`[${symbol}] NOTHING TO SELL ${symbol}`);
         return null;
       }
-      log(
+      this.log(
         COLORS.RED + `[${symbol}] SELL ERROR:` + COLORS.RESET,
         err.response?.data || err.message
       );

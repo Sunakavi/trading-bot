@@ -86,6 +86,28 @@
       margin-right: 4px;
     }
 
+    .market-tabs {
+      display: flex;
+      gap: 8px;
+      margin: 8px 0 16px;
+    }
+
+    .market-tab {
+      border: 1px solid #1f2937;
+      background: #111827;
+      color: #cbd5f5;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .market-tab.active {
+      background: #10b981;
+      border-color: #10b981;
+      color: #0f172a;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: 340px 1fr;
@@ -264,6 +286,14 @@
       font-size: 12px;
       color: #9ca3af;
       margin-top: 4px;
+    }
+
+    .stocks-only {
+      display: none;
+    }
+
+    .stocks-only.active {
+      display: flex;
     }
 
     /* LOG AREA LIKE TERMINAL */
@@ -465,8 +495,13 @@
   <div class="container">
     <h1>Crypto Bot Control Panel</h1>
     <div class="subtitle">
-      Live control over strategy, interval, kill switch and reset funds.
+      Live control over strategy, interval, sell all and reset funds.
       Logs are shown exactly as in the terminal.
+    </div>
+
+    <div class="market-tabs" id="marketTabs">
+      <button class="market-tab active" data-market="crypto">Crypto</button>
+      <button class="market-tab" data-market="stocks">Stocks</button>
     </div>
 
     <div class="control-bar">
@@ -620,11 +655,22 @@
           </span>
         </div>
         <div class="row">
-          <span class="label">Kill switch:</span>
+          <span class="label">Symbols:</span>
           <span class="value">
-            <span id="statusKill">OFF</span>
-            <span id="killBadge" class="badge badge-green">Inactive</span>
+            <span id="statusSymbols">—</span>
           </span>
+        </div>
+        <div class="row stocks-only" id="stocksMarketOpenRow">
+          <span class="label">Market Open:</span>
+          <span class="value"><span id="stocksMarketOpen">—</span></span>
+        </div>
+        <div class="row stocks-only" id="stocksNextOpenRow">
+          <span class="label">Next Open:</span>
+          <span class="value"><span id="stocksNextOpen">—</span></span>
+        </div>
+        <div class="row stocks-only" id="stocksCountdownRow">
+          <span class="label">Countdown:</span>
+          <span class="value"><span id="stocksCountdown">—</span></span>
         </div>
         <div class="status-line" id="statusUpdated">Last update: –</div>
 
@@ -742,7 +788,7 @@
         <div class="row" style="margin-top: 10px;">
           <span class="label">Actions:</span>
           <div>
-            <button class="btn btn-danger btn-small" onclick="killSwitch()">SELL ALL NOW</button>
+            <button class="btn btn-danger btn-small" onclick="sellAll()">SELL ALL</button>
           </div>
         </div>
       </div>
@@ -829,10 +875,22 @@
       interval: document.getElementById("statusInterval"),
       equity: document.getElementById("statusEquity"),
       pnl: document.getElementById("statusPnl"),
-      kill: document.getElementById("statusKill"),
-      killBadge: document.getElementById("killBadge"),
+      symbols: document.getElementById("statusSymbols"),
+      stocksMarketOpen: document.getElementById("stocksMarketOpen"),
+      stocksNextOpen: document.getElementById("stocksNextOpen"),
+      stocksCountdown: document.getElementById("stocksCountdown"),
       updated: document.getElementById("statusUpdated"),
     };
+
+    const marketTabsEl = document.getElementById("marketTabs");
+    const marketTabButtons = marketTabsEl
+      ? Array.from(marketTabsEl.querySelectorAll(".market-tab"))
+      : [];
+    const stocksOnlyEls = document.querySelectorAll(".stocks-only");
+    let currentMarket = localStorage.getItem("activeMarket") || "crypto";
+    let statusTimer = null;
+    let logTimer = null;
+    let logListTimer = null;
 
     const strategyStatusEl = document.getElementById("strategyStatus");
     const intervalStatusEl = document.getElementById("intervalStatus");
@@ -1545,10 +1603,41 @@
       });
     }
 
+    function stopPolling() {
+      if (statusTimer) clearInterval(statusTimer);
+      if (logTimer) clearInterval(logTimer);
+      if (logListTimer) clearInterval(logListTimer);
+      statusTimer = null;
+      logTimer = null;
+      logListTimer = null;
+    }
+
+    function startPolling() {
+      fetchStatus();
+      fetchLogs();
+      fetchLogFiles();
+      statusTimer = setInterval(fetchStatus, 8000);
+      logTimer = setInterval(fetchLogs, 5000);
+      logListTimer = setInterval(fetchLogFiles, 15000);
+    }
+
+    function setActiveMarket(nextMarket) {
+      const target = nextMarket === "stocks" ? "stocks" : "crypto";
+      currentMarket = target;
+      localStorage.setItem("activeMarket", target);
+      selectedLogFile = "";
+      updateLogDownloadLink();
+      marketTabButtons.forEach((btn) =>
+        btn.classList.toggle("active", btn.dataset.market === target)
+      );
+      stopPolling();
+      startPolling();
+    }
+
     // --- STATUS POLLING ---
     async function fetchStatus() {
       try {
-        const res = await fetch("/api/status");
+        const res = await fetch(`/api/status?market=${currentMarket}`);
         const data = await res.json();
         if (!data.ok) throw new Error("status not ok");
 
@@ -1562,7 +1651,8 @@
         if (data.performance) {
           if (data.performance.lastEquity != null) {
             const equity = Number(data.performance.lastEquity);
-            statusEls.equity.textContent = equity.toFixed(2) + " USDT";
+            const quoteLabel = currentMarket === "stocks" ? "USD" : "USDT";
+            statusEls.equity.textContent = equity.toFixed(2) + " " + quoteLabel;
           } else {
             statusEls.equity.textContent = "–";
           }
@@ -1596,23 +1686,32 @@
             exitElems.candleRedInput.value = (ex.candleRedTriggerPct * 100).toFixed(0);
         }
 
-        const isKill = data.killSwitch === true;
-        statusEls.kill.textContent = isKill ? "ON" : "OFF";
-        if (isKill) {
-          statusEls.killBadge.textContent = "Active";
-          statusEls.killBadge.classList.remove("badge-green");
-          statusEls.killBadge.classList.add("badge-red");
-        } else {
-          statusEls.killBadge.textContent = "Inactive";
-          statusEls.killBadge.classList.remove("badge-red");
-          statusEls.killBadge.classList.add("badge-green");
+        const symbolsCount =
+          data.symbolsCount != null
+            ? data.symbolsCount
+            : data.stateSummary?.symbols;
+        statusEls.symbols.textContent =
+          symbolsCount != null ? String(symbolsCount) : "–";
+
+        const isStocks = currentMarket === "stocks";
+        stocksOnlyEls.forEach((el) => el.classList.toggle("active", isStocks));
+        if (isStocks && data.marketClock) {
+          const clock = data.marketClock;
+          statusEls.stocksMarketOpen.textContent =
+            clock.isOpen === true ? "Yes" : "No";
+          statusEls.stocksNextOpen.textContent = clock.nextOpen || "–";
+          statusEls.stocksCountdown.textContent = clock.countdown || "–";
         }
 
         updateSummaryBar(data.tradeStats || {});
 
         statusEls.updated.textContent =
           "Last update: " +
-          formatTs(data.stateSummary?.lastUpdateTs || data.performance?.lastUpdateTs || Date.now());
+          formatTs(
+            data.stateSummary?.lastUpdateTs ||
+              data.performance?.lastUpdateTs ||
+              Date.now()
+          );
       } catch (err) {
         statusEls.updated.textContent = "Status error: " + err.message;
       }
@@ -1639,7 +1738,7 @@
         if (!Number.isNaN(cr)) payload.candleRedTriggerPct = cr / 100.0;
         payload.candleExitEnabled = candleEnabled;
 
-        const res = await fetch("/api/config", {
+        const res = await fetch(`/api/config?market=${currentMarket}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -1716,7 +1815,7 @@
     // --- LOGS POLLING ---
     function updateLogDownloadLink() {
       if (selectedLogFile) {
-        logDownloadLinkEl.href = `/api/logs/download?file=${encodeURIComponent(selectedLogFile)}`;
+        logDownloadLinkEl.href = `/api/logs/download?market=${currentMarket}&file=${encodeURIComponent(selectedLogFile)}`;
         logDownloadLinkEl.setAttribute("aria-disabled", "false");
       } else {
         logDownloadLinkEl.removeAttribute("href");
@@ -1726,7 +1825,7 @@
 
     async function fetchLogFiles() {
       try {
-        const res = await fetch("/api/logs/list");
+        const res = await fetch(`/api/logs/list?market=${currentMarket}`);
         const data = await res.json();
         if (!data.ok || !Array.isArray(data.files)) {
           throw new Error("invalid log list");
@@ -1755,8 +1854,8 @@
     async function fetchLogs() {
       try {
         const url = selectedLogFile
-          ? `/api/logs?file=${encodeURIComponent(selectedLogFile)}`
-          : "/api/logs";
+          ? `/api/logs?market=${currentMarket}&file=${encodeURIComponent(selectedLogFile)}`
+          : `/api/logs?market=${currentMarket}`;
         const res = await fetch(url);
         const data = await res.json();
         if (!data.ok || !Array.isArray(data.lines)) {
@@ -1805,7 +1904,7 @@
       try {
         const label = describeStrategy(id);
         strategyStatusEl.textContent = `Sending strategy change for ${label}...`;
-        const res = await fetch("/api/config", {
+        const res = await fetch(`/api/config?market=${currentMarket}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ activeStrategyId: Number(id) }),
@@ -1822,7 +1921,7 @@
     async function setIntervalMs(ms) {
       try {
         intervalStatusEl.textContent = "Sending interval change...";
-        const res = await fetch("/api/config", {
+        const res = await fetch(`/api/config?market=${currentMarket}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ loopIntervalMs: ms }),
@@ -1836,10 +1935,12 @@
       }
     }
 
-    async function killSwitch() {
+    async function sellAll() {
       try {
         intervalStatusEl.textContent = "Sending SELL ALL...";
-        const res = await fetch("/api/kill", { method: "POST" });
+        const res = await fetch(`/api/sellAll?market=${currentMarket}`, {
+          method: "POST",
+        });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "failed");
         intervalStatusEl.textContent = "SELL ALL requested";
@@ -1957,6 +2058,14 @@
       setStrategy(id);
     });
 
+    marketTabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.market;
+        if (!target) return;
+        setActiveMarket(target);
+      });
+    });
+
     renderExitPresetOptions();
     renderEntryStrategyOptions();
     renderEntryStrategyTable();
@@ -1977,13 +2086,7 @@
     });
 
     // --- INITIAL LOAD ---
-    fetchStatus();
-    fetchLogs();
-    fetchLogFiles();
-
-    // --- POLLERS ---
-    setInterval(fetchStatus, 8000); // status every 8s
-    setInterval(fetchLogs, 5000); // logs every 5s
+    setActiveMarket(currentMarket);
   </script>
 </body>
 </html>

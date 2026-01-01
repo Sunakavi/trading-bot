@@ -7,10 +7,11 @@ const { COLORS } = require("./config");
 const { parseKlines } = require("./utils");
 
 class BinanceClient {
-  constructor(baseURL, apiKey, apiSecret) {
+  constructor(baseURL, apiKey, apiSecret, logger = log) {
     this.baseURL = baseURL;
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
+    this.log = logger;
   }
 
   setCredentials({ baseURL, apiKey, apiSecret }) {
@@ -50,8 +51,8 @@ class BinanceClient {
       return res.data;
     } catch (err) {
   const details = err.response?.data || err.message || err;
-
-  log(
+
+    this.log(
     COLORS.RED + `[API] Signed Request Error (${path}):` + COLORS.RESET,
     typeof details === "object" ? JSON.stringify(details) : details
   );
@@ -67,7 +68,7 @@ class BinanceClient {
       const res = await axios.get(url, { params });
       return res.data;
     } catch (err) {
-      log(
+      this.log(
         COLORS.RED + `[API] Public Request Error (${path}):` + COLORS.RESET,
         err.response?.data || err.message
       );
@@ -108,15 +109,15 @@ class BinanceClient {
     const top = usdtTickers.slice(0, config.MAX_SYMBOLS);
     const symbols = top.map((t) => t.symbol);
 
-    log("=== TOP SYMBOLS (by quoteVolume USDT) ===");
+    this.log("=== TOP SYMBOLS (by quoteVolume USDT) ===");
     top.forEach((t, i) => {
-      log(
+      this.log(
         `${i + 1}. ${t.symbol} | quoteVol=${parseFloat(
           t.quoteVolume
         ).toFixed(0)}`
       );
     });
-    log("========================================");
+    this.log("========================================");
 
     return symbols;
   }
@@ -145,7 +146,7 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
   const freeUSDT = usdtBalance ? parseFloat(usdtBalance.free) : 0;
 
   if (freeUSDT <= 0) {
-    log(
+    this.log(
       `[${symbol}] אין ${quote} פנוי (free=${freeUSDT.toFixed(2)}) – לא קונה`
     );
     return null;
@@ -156,7 +157,7 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
 
   // הגנה: אם סכום קטן מדי – לא לנסות
   if (quoteQty < 5) {
-    log(
+    this.log(
       COLORS.YELLOW +
         `[${symbol}] quoteQty=${quoteQty.toFixed(
           2
@@ -182,8 +183,8 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
   const steps = Math.floor(baseQty / stepSize);
   baseQty = steps * stepSize;
 
-  if (baseQty < minQty || baseQty <= 0) {
-    log(
+  if (baseQty < minQty || baseQty <= 0) {
+    this.log(
       COLORS.YELLOW +
         `[${symbol}] Calculated baseQty=${baseQty} < minQty=${minQty} → SKIP (LOT_SIZE)` +
         COLORS.RESET
@@ -192,8 +193,8 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
   }
 
   const finalQty = parseFloat(baseQty.toFixed(8)); // קצת רזולוציה
-
-  log(
+
+    this.log(
     COLORS.PURPLE +
       `→ BUY ${symbol} qty=${finalQty} (~${quoteQty.toFixed(
         2
@@ -212,8 +213,8 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
 
   const executedQty = parseFloat(res.executedQty);
   const avgPrice = parseFloat(res.cummulativeQuoteQty) / executedQty;
-
-  log(
+
+    this.log(
     COLORS.PURPLE + "   BUY ORDER:" + COLORS.RESET,
     JSON.stringify({ symbol, orderId: res.orderId, executedQty, avgPrice })
   );
@@ -228,13 +229,13 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
     const account = await this.getAccount();
     const { free } = this.findBalance(account, baseAsset);
     if (free <= 0.000001) {
-      log(`[${symbol}] NOTHING TO SELL ${baseAsset}`);
+      this.log(`[${symbol}] NOTHING TO SELL ${baseAsset}`);
       return null;
     }
 
     const qty = Number(free.toFixed(6));
 
-    log(
+    this.log(
       COLORS.GREEN + `→ SELL ${symbol} amount ${qty}` + COLORS.RESET
     );
 
@@ -253,7 +254,7 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
       avgPrice = cumQuote / executedQty;
     }
 
-    log(
+    this.log(
       COLORS.GREEN + "   SELL ORDER:" + COLORS.RESET,
       JSON.stringify({ symbol, orderId: res.orderId, executedQty, avgPrice })
     );
@@ -297,3 +298,5 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
 }
 
 module.exports = { BinanceClient };
+
+
