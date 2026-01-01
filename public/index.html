@@ -15,6 +15,20 @@
       background: #111827;
       color: #e5e7eb;
     }
+    body.theme-crypto {
+      --tab-active-bg: #10b981;
+      --tab-active-text: #0f172a;
+      --tab-underline: #10b981;
+      --sell-all-outline: transparent;
+      --sell-all-bg: #b91c1c;
+    }
+    body.theme-stocks {
+      --tab-active-bg: #6366f1;
+      --tab-active-text: #f9fafb;
+      --tab-underline: #f59e0b;
+      --sell-all-outline: #f59e0b;
+      --sell-all-bg: #991b1b;
+    }
     .container {
       max-width: 1100px;
       margin: 0 auto;
@@ -100,12 +114,24 @@
       border-radius: 999px;
       font-size: 12px;
       cursor: pointer;
+      position: relative;
     }
 
     .market-tab.active {
-      background: #10b981;
-      border-color: #10b981;
-      color: #0f172a;
+      background: var(--tab-active-bg);
+      border-color: var(--tab-active-bg);
+      color: var(--tab-active-text);
+    }
+
+    .market-tab.active::after {
+      content: "";
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: -6px;
+      height: 2px;
+      background: var(--tab-underline);
+      border-radius: 999px;
     }
 
     .grid {
@@ -250,6 +276,10 @@
       background: #7f1d1d;
       color: #fecaca;
     }
+    .badge-amber {
+      background: #78350f;
+      color: #fde68a;
+    }
 
     .btn {
       border: none;
@@ -277,6 +307,11 @@
       background: #b91c1c;
       color: #fee2e2;
     }
+
+    .sell-all-btn {
+      background: var(--sell-all-bg);
+      border: 1px solid var(--sell-all-outline);
+    }
     .btn-small {
       font-size: 12px;
       padding: 4px 10px;
@@ -288,12 +323,28 @@
       margin-top: 4px;
     }
 
+    .countdown-focus .label,
+    .countdown-focus .value {
+      color: #f9fafb;
+      font-weight: 600;
+    }
+
+    .countdown-note {
+      margin-left: 110px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
     .stocks-only {
       display: none;
     }
 
     .stocks-only.active {
       display: flex;
+    }
+
+    .stocks-only.countdown-note.active {
+      display: block;
     }
 
     /* LOG AREA LIKE TERMINAL */
@@ -489,9 +540,29 @@
       color: #e5e7eb;
       font-size: 12px;
     }
+
+    .theme-crypto .settings-stocks {
+      opacity: 0.6;
+    }
+
+    .theme-stocks .settings-crypto {
+      opacity: 0.6;
+    }
+
+    .theme-stocks #stocksCountdown {
+      color: #f59e0b;
+      font-weight: 600;
+    }
+
+    .strategy-market-label {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 10px;
+      letter-spacing: 0.02em;
+    }
   </style>
 </head>
-<body>
+<body class="theme-crypto">
   <div class="container">
     <h1>Crypto Bot Control Panel</h1>
     <div class="subtitle">
@@ -523,16 +594,16 @@
     <div id="settingsPanel" class="card settings-panel">
       <h2>Connection Settings</h2>
       <div class="settings-grid">
-        <label class="preset-input">Binance API Key
+        <label class="preset-input settings-crypto">Binance API Key
           <input id="binanceApiKeyInput" class="text-input" type="text" placeholder="Enter Binance API key" />
         </label>
-        <label class="preset-input">Binance Secret Key
+        <label class="preset-input settings-crypto">Binance Secret Key
           <input id="binanceApiSecretInput" class="text-input" type="password" placeholder="Enter Binance secret key" />
         </label>
-        <label class="preset-input">Binance Base URL
+        <label class="preset-input settings-crypto">Binance Base URL
           <input id="binanceBaseUrlInput" class="text-input" type="text" placeholder="https://testnet.binance.vision" />
         </label>
-        <label class="preset-input">TradingView Webhook URL
+        <label class="preset-input settings-crypto">TradingView Webhook URL
           <input id="tradingViewWebhookInput" class="text-input" type="text" placeholder="https://your-webhook-url" />
         </label>
         <label class="preset-input">Market Type
@@ -541,19 +612,19 @@
             <option value="stocks">Stocks (Alpaca Paper)</option>
           </select>
         </label>
-        <label class="preset-input">Alpaca API Key
+        <label class="preset-input settings-stocks">Alpaca API Key
           <input id="alpacaApiKeyInput" class="text-input" type="text" placeholder="Enter Alpaca API key" />
         </label>
-        <label class="preset-input">Alpaca Secret Key
+        <label class="preset-input settings-stocks">Alpaca Secret Key
           <input id="alpacaApiSecretInput" class="text-input" type="password" placeholder="Enter Alpaca secret key" />
         </label>
-        <label class="preset-input">Alpaca Trading Base URL
+        <label class="preset-input settings-stocks">Alpaca Trading Base URL
           <input id="alpacaTradingBaseUrlInput" class="text-input" type="text" placeholder="https://paper-api.alpaca.markets" />
         </label>
-        <label class="preset-input">Alpaca Data Base URL
+        <label class="preset-input settings-stocks">Alpaca Data Base URL
           <input id="alpacaDataBaseUrlInput" class="text-input" type="text" placeholder="https://data.alpaca.markets" />
         </label>
-        <label class="preset-input">Alpaca Data Feed
+        <label class="preset-input settings-stocks">Alpaca Data Feed
           <input id="alpacaDataFeedInput" class="text-input" type="text" placeholder="iex" />
         </label>
       </div>
@@ -672,6 +743,7 @@
           <span class="label">Countdown:</span>
           <span class="value"><span id="stocksCountdown">—</span></span>
         </div>
+        <div class="status-line stocks-only countdown-note" id="stocksCountdownNote"></div>
         <div class="status-line" id="statusUpdated">Last update: –</div>
 
         <hr style="border: none; border-top: 1px solid #374151; margin: 10px 0;" />
@@ -788,7 +860,7 @@
         <div class="row" style="margin-top: 10px;">
           <span class="label">Actions:</span>
           <div>
-            <button class="btn btn-danger btn-small" onclick="sellAll()">SELL ALL</button>
+            <button id="sellAllBtn" class="btn btn-danger btn-small sell-all-btn" onclick="sellAll()">SELL ALL (Crypto)</button>
           </div>
         </div>
       </div>
@@ -822,6 +894,7 @@
 
       <div id="entryStrategyTab" class="tab-panel active">
         <h2>Entry Strategy Presets</h2>
+        <div class="strategy-market-label" id="entryStrategyMarketLabel">Entry Strategy Presets - Crypto</div>
         <p class="subtitle" style="margin-bottom: 12px;">
           These presets adjust trend, pullback, momentum, ATR, and volume filters. Selecting one updates the bot
           immediately for the next trading loop.
@@ -879,6 +952,7 @@
       stocksMarketOpen: document.getElementById("stocksMarketOpen"),
       stocksNextOpen: document.getElementById("stocksNextOpen"),
       stocksCountdown: document.getElementById("stocksCountdown"),
+      stocksCountdownNote: document.getElementById("stocksCountdownNote"),
       updated: document.getElementById("statusUpdated"),
     };
 
@@ -900,6 +974,9 @@
     const logRefreshBtn = document.getElementById("logRefreshBtn");
     const logLoadBtn = document.getElementById("logLoadBtn");
     const logDownloadLinkEl = document.getElementById("logDownloadLink");
+    const sellAllBtnEl = document.getElementById("sellAllBtn");
+    const entryStrategyMarketLabelEl = document.getElementById("entryStrategyMarketLabel");
+    const stocksCountdownRowEl = document.getElementById("stocksCountdownRow");
     const botControlStatusEl = document.getElementById("botControlStatus");
     const botRunBadgeEl = document.getElementById("botRunBadge");
     const startBotBtn = document.getElementById("startBotBtn");
@@ -1621,6 +1698,21 @@
       logListTimer = setInterval(fetchLogFiles, 15000);
     }
 
+    function applyMarketTheme(target) {
+      document.body.classList.toggle("theme-crypto", target === "crypto");
+      document.body.classList.toggle("theme-stocks", target === "stocks");
+      if (sellAllBtnEl) {
+        sellAllBtnEl.textContent =
+          target === "stocks" ? "SELL ALL (Stocks)" : "SELL ALL (Crypto)";
+      }
+      if (entryStrategyMarketLabelEl) {
+        entryStrategyMarketLabelEl.textContent =
+          target === "stocks"
+            ? "Entry Strategy Presets - Stocks (US Equities)"
+            : "Entry Strategy Presets - Crypto";
+      }
+    }
+
     function setActiveMarket(nextMarket) {
       const target = nextMarket === "stocks" ? "stocks" : "crypto";
       currentMarket = target;
@@ -1630,6 +1722,7 @@
       marketTabButtons.forEach((btn) =>
         btn.classList.toggle("active", btn.dataset.market === target)
       );
+      applyMarketTheme(target);
       stopPolling();
       startPolling();
     }
@@ -1697,10 +1790,20 @@
         stocksOnlyEls.forEach((el) => el.classList.toggle("active", isStocks));
         if (isStocks && data.marketClock) {
           const clock = data.marketClock;
-          statusEls.stocksMarketOpen.textContent =
-            clock.isOpen === true ? "Yes" : "No";
-          statusEls.stocksNextOpen.textContent = clock.nextOpen || "–";
-          statusEls.stocksCountdown.textContent = clock.countdown || "–";
+          const isOpen = clock.isOpen === true;
+          statusEls.stocksMarketOpen.innerHTML = isOpen
+            ? '<span class="badge badge-green">OPEN</span>'
+            : '<span class="badge badge-amber">CLOSED</span>';
+          statusEls.stocksNextOpen.textContent = clock.nextOpen || "?";
+          statusEls.stocksCountdown.textContent = clock.countdown || "?";
+          if (stocksCountdownRowEl) {
+            stocksCountdownRowEl.classList.toggle("countdown-focus", !isOpen);
+          }
+          if (statusEls.stocksCountdownNote) {
+            statusEls.stocksCountdownNote.textContent = isOpen
+              ? ""
+              : "Bot running - waiting for market open";
+          }
         }
 
         updateSummaryBar(data.tradeStats || {});
@@ -1862,7 +1965,10 @@
           throw new Error("invalid log payload");
         }
 
-        const html = (data.lines || []).map((line) => highlightLog(line)).join("<br>");
+        const prefix = currentMarket === "stocks" ? "[STOCKS] " : "[CRYPTO] ";
+        const html = (data.lines || [])
+          .map((line) => highlightLog(prefix + line))
+          .join("<br>");
         logContainerEl.innerHTML = html || "(no logs yet)";
         // auto scroll to bottom
         logContainerEl.scrollTop = logContainerEl.scrollHeight;
