@@ -630,6 +630,7 @@
       </div>
       <div class="row" style="margin-top: 10px;">
         <button id="saveSettingsBtn" class="btn btn-primary btn-small">Save Settings</button>
+        <button id="testAlpacaBtn" class="btn btn-outline btn-small settings-stocks">Test Alpaca Connection</button>
       </div>
       <div class="status-line" id="settingsStatus"></div>
     </div>
@@ -989,6 +990,7 @@
     const settingsToggleBtn = document.getElementById("settingsToggleBtn");
     const settingsPanelEl = document.getElementById("settingsPanel");
     const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+    const testAlpacaBtn = document.getElementById("testAlpacaBtn");
     const settingsStatusEl = document.getElementById("settingsStatus");
 
     const settingsInputs = {
@@ -1823,7 +1825,10 @@
 
         if (isStocks && statusEls.alpaca) {
           const alpaca = data.alpaca || {};
-          if (alpaca.connected) {
+          if (alpaca.missingKeys) {
+            statusEls.alpaca.innerHTML =
+              '<span class="badge badge-red">DISCONNECTED</span> Missing Alpaca API key/secret';
+          } else if (alpaca.connected) {
             const base = alpaca.baseUrl
               ? " " + escapeHtml(String(alpaca.baseUrl))
               : "";
@@ -1946,6 +1951,25 @@
         settingsStatusEl.textContent = "Settings saved successfully.";
       } catch (err) {
         settingsStatusEl.textContent = "Settings error: " + err.message;
+      }
+    }
+
+    async function testAlpacaConnection() {
+      try {
+        settingsStatusEl.textContent = "Testing Alpaca connection...";
+        const res = await fetch("/api/alpaca/test?market=stocks", { method: "POST" });
+        const data = await res.json();
+        if (!data.ok) {
+          settingsStatusEl.textContent = "Alpaca test failed: " + (data.error || "failed");
+        } else {
+          const equity = Number.isFinite(Number(data.equity))
+            ? " Equity=" + Number(data.equity).toFixed(2)
+            : "";
+          settingsStatusEl.textContent = "Alpaca test OK." + equity;
+        }
+        await fetchStatus();
+      } catch (err) {
+        settingsStatusEl.textContent = "Alpaca test error: " + err.message;
       }
     }
 
@@ -2098,6 +2122,7 @@
       }
     });
     saveSettingsBtn.addEventListener("click", saveSettings);
+    if (testAlpacaBtn) testAlpacaBtn.addEventListener("click", testAlpacaConnection);
     applyExitPresetBtn.addEventListener("click", () => {
       const presetId = exitPresetSelectEl.value;
       if (!presetId) {

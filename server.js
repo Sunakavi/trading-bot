@@ -33,6 +33,16 @@ function logMarket(market, ...args) {
   logger(...args);
 }
 
+function formatApiError(err) {
+  const raw = err?.response?.data ?? err?.message ?? err;
+  if (typeof raw === "string") return raw;
+  try {
+    return JSON.stringify(raw);
+  } catch (e) {
+    return String(raw);
+  }
+}
+
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfigCrypto = {
   activeStrategyId: 102,
@@ -425,6 +435,8 @@ function startHttpServer(shared = {}) {
           countdownSec: clock.countdownSec ?? null,
           countdown: clock.countdown ?? null,
         };
+        const missingAlpacaKey = !config.ALPACA_API_KEY;
+        const missingAlpacaSecret = !config.ALPACA_API_SECRET;
         const alpacaStatus = marketShared.alpacaStatus || {};
         payload.alpaca = {
           connected: alpacaStatus.connected ?? false,
@@ -432,6 +444,9 @@ function startHttpServer(shared = {}) {
           lastCheckTs: alpacaStatus.lastCheckTs ?? null,
           lastError: alpacaStatus.lastError ?? null,
           equity: alpacaStatus.equity ?? null,
+          missingKeys: missingAlpacaKey || missingAlpacaSecret,
+          missingKey: missingAlpacaKey,
+          missingSecret: missingAlpacaSecret,
         };
       }
 
@@ -439,6 +454,77 @@ function startHttpServer(shared = {}) {
     } catch (e) {
       console.error(e);
       res.status(500).json({ ok: false, error: "status failed" });
+    }
+  });
+
+  // ===== API: ALPACA TEST =====
+  app.post("/api/alpaca/test", async (req, res) => {
+    try {
+      const market = resolveMarketFromRequest(req, res);
+      if (!market) return;
+      if (market !== "stocks") {
+        return res.status(400).json({ ok: false, error: "Invalid market" });
+      }
+
+      const missingAlpacaKey = !config.ALPACA_API_KEY;
+      const missingAlpacaSecret = !config.ALPACA_API_SECRET;
+      if (missingAlpacaKey || missingAlpacaSecret) {
+        return res.json({
+          ok: false,
+          error: "Missing Alpaca API key/secret",
+        });
+      }
+
+      const marketClient = shared.marketClients?.stocks;
+      if (!marketClient) {
+        return res
+          .status(500)
+          .json({ ok: false, error: "Alpaca client not initialized" });
+      }
+
+      const accountSnapshot = await marketClient.getAccount();
+      const alpacaEquityRaw = Number(accountSnapshot?.account?.equity);
+      const alpacaEquity = Number.isFinite(alpacaEquityRaw)
+        ? alpacaEquityRaw
+        : null;
+
+      const marketShared = shared.markets?.stocks || {};
+      marketShared.alpacaStatus = {
+        connected: true,
+        baseUrl: marketClient.tradingBaseUrl,
+        lastCheckTs: Date.now(),
+        lastError: null,
+        equity: alpacaEquity,
+      };
+      shared.markets.stocks = marketShared;
+
+      logMarket("stocks", `[ALPACA] Test OK ${marketClient.tradingBaseUrl}`);
+      return res.json({
+        ok: true,
+        connected: true,
+        baseUrl: marketClient.tradingBaseUrl,
+        equity: alpacaEquity,
+      });
+    } catch (err) {
+      const errorText = formatApiError(err);
+      const marketClient = shared.marketClients?.stocks;
+      const marketShared = shared.markets?.stocks || {};
+      marketShared.alpacaStatus = {
+        connected: false,
+        baseUrl: marketClient?.tradingBaseUrl || config.ALPACA_TRADING_BASE_URL,
+        lastCheckTs: Date.now(),
+        lastError: errorText,
+        equity: null,
+      };
+      shared.markets.stocks = marketShared;
+
+      logMarket("stocks", "[ALPACA] Test failed:", errorText);
+      return res.json({
+        ok: false,
+        connected: false,
+        error: errorText,
+        baseUrl: marketClient?.tradingBaseUrl || config.ALPACA_TRADING_BASE_URL,
+      });
     }
   });
 
