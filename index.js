@@ -21,7 +21,14 @@ const { StockClient } = require("./stockClient");
 const { runSymbolStrategy, initPositions } = require("./strategy");
 const { getTradingPlan } = require("./portfolioManager");
 const { canOpenPosition } = require("./riskEngine");
-const { resolveExitPresetById, normalizeLayerId } = require("./strategyRegistry");
+const {
+  resolveExitPresetById,
+  normalizeLayerId,
+} = require("./strategyRegistry");
+const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
+const { IexProvider } = require("./providers/iexProvider");
+const { AlpacaBroker } = require("./brokers/alpacaBroker");
+const { MarketSessionGate } = require("./session/marketSessionGate");
 const { setupKeypressListener } = require("./input");
 const { getStats } = require("./tradeHistory");
 const {
@@ -141,6 +148,15 @@ const stocksClient = new StockClient({
   logger: marketLoggers.stocks,
 });
 
+const stocksDataProvider = new IexProvider({
+  dataClient: stocksClient,
+  config: StrategyPortfolioConfig,
+  logger: marketLoggers.stocks,
+});
+
+const stocksBroker = new AlpacaBroker({ tradingClient: stocksClient });
+const stocksSessionGate = new MarketSessionGate({ dataProvider: stocksDataProvider });
+
 shared.marketClients = {
   crypto: cryptoClient,
   stocks: stocksClient,
@@ -199,10 +215,18 @@ const POSITION_DEFAULTS = {
   maxPrice: 0,
   layerId: null,
   strategyId: null,
+  entryPresetId: null,
   exitPresetId: null,
   riskAllocatedUSD: null,
   openedAt: null,
   cooldownUntil: null,
+  entryBarTs: null,
+  lastEvaluatedAt: null,
+  initialStop: null,
+  trailingStop: null,
+  entryAtr: null,
+  entryR: null,
+  breakoutLevel: null,
 };
 
 function normalizePositionState(pos) {
@@ -346,9 +370,11 @@ async function logPerformance(market, equity, logger) {
 }
 
 async function logPortfolio(market, context) {
-  const { marketClient, marketConfig, logger } = context;
+  const { marketClient, marketConfig, broker, logger } = context;
   try {
-    const account = await marketClient.getAccount();
+    const account = broker?.getAccount
+      ? await broker.getAccount()
+      : await marketClient.getAccount();
     const quote = marketConfig.QUOTE;
     const quoteBal = marketClient.findBalance(account, quote);
     const totalQuote = quoteBal.free + quoteBal.locked;
@@ -395,7 +421,7 @@ async function logPortfolio(market, context) {
 }
 
 async function sellAllPositions(market, context) {
-  const { marketConfig, marketClient, logger } = context;
+  const { marketConfig, marketClient, broker, logger } = context;
   const quote = marketConfig.QUOTE;
   const symbols = new Set([
     ...context.activeSymbols,
@@ -404,7 +430,11 @@ async function sellAllPositions(market, context) {
 
   for (const sym of symbols) {
     try {
-      await marketClient.sellMarketAll(sym, quote);
+      if (broker?.sellMarketAll) {
+        await broker.sellMarketAll(sym, quote);
+      } else {
+        await marketClient.sellMarketAll(sym, quote);
+      }
       context.positions[sym] = {
         hasPosition: false,
         entryPrice: 0,
@@ -422,17 +452,19 @@ async function sellAllPositions(market, context) {
 }
 
 function updateMarketClock(marketShared, clock) {
-  const nextOpen = clock?.next_open ? Date.parse(clock.next_open) : NaN;
-  const nextClose = clock?.next_close ? Date.parse(clock.next_close) : NaN;
+  const nextOpenRaw = clock?.next_open || clock?.nextOpen;
+  const nextCloseRaw = clock?.next_close || clock?.nextClose;
+  const nextOpen = nextOpenRaw ? Date.parse(nextOpenRaw) : NaN;
+  const nextClose = nextCloseRaw ? Date.parse(nextCloseRaw) : NaN;
   const now = Date.now();
   const countdownSec = Number.isFinite(nextOpen)
     ? Math.max(0, Math.floor((nextOpen - now) / 1000))
     : null;
 
   marketShared.marketClock = {
-    isOpen: !!clock?.is_open,
-    nextOpen: clock?.next_open || null,
-    nextClose: clock?.next_close || null,
+    isOpen: !!(clock?.is_open ?? clock?.isOpen),
+    nextOpen: nextOpenRaw || null,
+    nextClose: nextCloseRaw || null,
     countdownSec,
     countdown: countdownSec != null ? formatCountdown(countdownSec) : null,
   };
@@ -444,6 +476,8 @@ function updateMarketClock(marketShared, clock) {
 async function runMarketLoop(market) {
   const logger = marketLoggers[market];
   const marketClient = shared.marketClients[market];
+  const dataProvider = market === "stocks" ? stocksDataProvider : marketClient;
+  const broker = market === "stocks" ? stocksBroker : marketClient;
   const runtimeConfig = market === "stocks" ? runtimeConfigStocks : runtimeConfigCrypto;
   const marketConfig = marketConfigs[market];
   const marketShared = shared.markets[market];
@@ -454,6 +488,8 @@ async function runMarketLoop(market) {
     activeSymbols: [],
     lastPrices: {},
     marketClient,
+    broker,
+    dataProvider,
     marketConfig,
     logger,
   };
@@ -527,41 +563,43 @@ async function runMarketLoop(market) {
       continue;
     }
 
+    let marketOpen = true;
     if (market === "stocks") {
       try {
-        const clock = await marketClient.getClock();
+        const clock = await stocksSessionGate.getSession();
         updateMarketClock(marketShared, clock);
 
-        if (!clock?.is_open) {
+        if (!clock?.isOpen) {
+          marketOpen = false;
           const countdown = marketShared.marketClock.countdown || "--:--:--";
-          const nextOpen = clock?.next_open || "unknown";
+          const nextOpen = clock?.nextOpen || "unknown";
           logger(
             `[STOCKS] MARKET CLOSED | opens in ${countdown} | next_open=${nextOpen} ET`
           );
-          await interruptibleSleep(60000, market);
-          continue;
         }
       } catch (err) {
         logger(
-          COLORS.YELLOW + "[MARKET] Clock check failed, skipping this loop." + COLORS.RESET,
+          COLORS.YELLOW + "[MARKET] Clock check failed, continuing loop." + COLORS.RESET,
           err.response?.data || err.message
         );
-        await interruptibleSleep(runtimeConfig.loopIntervalMs, market);
-        continue;
       }
 
-      const refreshed = await marketClient.fetchTopSymbols(marketConfig);
-      if (Array.isArray(refreshed) && refreshed.length > 0) {
-        const openPositions = Object.entries(context.positions)
-          .filter(([, pos]) => pos?.hasPosition)
-          .map(([sym]) => sym);
-        const merged = Array.from(new Set([...refreshed, ...openPositions]));
-        const nextPositions = initPositions(merged);
-        merged.forEach((sym) => {
-          if (context.positions[sym]) nextPositions[sym] = context.positions[sym];
-        });
-        context.activeSymbols = merged;
-        context.positions = nextPositions;
+      const today = new Date().toISOString().slice(0, 10);
+      if (context.lastUniverseRefresh !== today) {
+        const refreshed = await dataProvider.listUniverse();
+        if (Array.isArray(refreshed) && refreshed.length > 0) {
+          const openPositions = Object.entries(context.positions)
+            .filter(([, pos]) => pos?.hasPosition)
+            .map(([sym]) => sym);
+          const merged = Array.from(new Set([...refreshed, ...openPositions]));
+          const nextPositions = initPositions(merged);
+          merged.forEach((sym) => {
+            if (context.positions[sym]) nextPositions[sym] = context.positions[sym];
+          });
+          context.activeSymbols = merged;
+          context.positions = nextPositions;
+        }
+        context.lastUniverseRefresh = today;
       }
     }
 
@@ -594,7 +632,7 @@ async function runMarketLoop(market) {
 
     if (market === "stocks") {
       try {
-        accountSnapshot = await marketClient.getAccount();
+        accountSnapshot = await broker.getAccount();
         equity = computeEquityFromAccount(
           accountSnapshot,
           marketConfig.QUOTE,
@@ -640,9 +678,9 @@ async function runMarketLoop(market) {
       let regimeCandles = [];
       if (benchmarkSymbol) {
         try {
-          regimeCandles = await marketClient.fetchKlines(
+          regimeCandles = await dataProvider.getBars(
             benchmarkSymbol,
-            marketConfig.INTERVAL,
+            "1h",
             marketConfig.KLINES_LIMIT
           );
         } catch (err) {
@@ -672,6 +710,7 @@ async function runMarketLoop(market) {
       const enabledLayers = portfolioPlan.enabledLayers || [];
       const layerConfigsById = portfolioPlan.layerConfigsById || {};
       const exitPresetMap = portfolioPlan.exitPresetMap || {};
+      const entryPresetMap = portfolioPlan.entryPresetMap || {};
       const exitConfigResolver = (presetId) =>
         resolveExitPresetById(exitPresetMap, presetId);
 
@@ -697,7 +736,11 @@ async function runMarketLoop(market) {
             ? (portfolioPlan.layerStrategy[layerId] || runtimeConfig.activeStrategyId)
             : runtimeConfig.activeStrategyId;
           const exitPreset = portfolioPlan.layerExit[layerId] || {};
+          const entryPreset = portfolioPlan.layerEntry[layerId] || {};
+          const entryPresetResolved =
+            entryPresetMap[entryPreset.entryPresetId] || entryPreset.entryPreset;
           if (!pos.strategyId) pos.strategyId = strategyId;
+          if (!pos.entryPresetId) pos.entryPresetId = entryPreset.entryPresetId || null;
           if (!pos.exitPresetId) pos.exitPresetId = exitPreset.exitPresetId || null;
           if (!pos.openedAt) pos.openedAt = Date.now();
 
@@ -705,7 +748,8 @@ async function runMarketLoop(market) {
             sym,
             context.positions,
             context.lastPrices,
-            marketClient,
+            dataProvider,
+            broker,
             marketConfig,
             config.KILL_SWITCH,
             false,
@@ -718,8 +762,12 @@ async function runMarketLoop(market) {
               allowEntries: false,
               layerId,
               strategyId,
+              entryPresetId: entryPreset.entryPresetId,
+              entryPreset: entryPresetResolved,
+              timeframe: layerConfig?.timeframe,
               exitPresetId: pos.exitPresetId || exitPreset.exitPresetId,
               exitConfig: exitPreset.exitConfig,
+              exitPreset: exitPresetMap[exitPreset.exitPresetId],
               exitConfigResolver,
             }
           );
@@ -731,7 +779,8 @@ async function runMarketLoop(market) {
             sym,
             context.positions,
             context.lastPrices,
-            marketClient,
+            dataProvider,
+            broker,
             marketConfig,
             config.KILL_SWITCH,
             false,
@@ -756,6 +805,7 @@ async function runMarketLoop(market) {
             lastPrices: context.lastPrices,
             equity,
             globalMaxOpenPositions,
+            globalRisk: StrategyPortfolioConfig.globalRisk,
           });
 
           if (!allowance.allowed) {
@@ -769,17 +819,22 @@ async function runMarketLoop(market) {
             ((Number(layerConfig?.maxRiskPerTradePct) || 0) / 100);
           const orderBudget = Math.min(layerBudget?.availableUsd || 0, maxRiskUsd);
           const orderFraction = freeCash > 0 ? Math.min(1, orderBudget / freeCash) : 0;
+          const strategyId = portfolioPlan.layerStrategy[layerId] || runtimeConfig.activeStrategyId;
           const exitPreset = portfolioPlan.layerExit[layerId] || {};
+          const entryPreset = portfolioPlan.layerEntry[layerId] || {};
+          const entryPresetResolved =
+            entryPresetMap[entryPreset.entryPresetId] || entryPreset.entryPreset;
           if (!pos.strategyId) pos.strategyId = strategyId;
+          if (!pos.entryPresetId) pos.entryPresetId = entryPreset.entryPresetId || null;
           if (!pos.exitPresetId) pos.exitPresetId = exitPreset.exitPresetId || null;
           if (!pos.openedAt) pos.openedAt = Date.now();
-          const strategyId = portfolioPlan.layerStrategy[layerId] || runtimeConfig.activeStrategyId;
 
           await runSymbolStrategy(
             sym,
             context.positions,
             context.lastPrices,
-            marketClient,
+            dataProvider,
+            broker,
             marketConfig,
             config.KILL_SWITCH,
             false,
@@ -789,12 +844,16 @@ async function runMarketLoop(market) {
             market,
             logger,
             {
-              allowEntries: orderFraction > 0,
+              allowEntries: orderFraction > 0 && marketOpen,
               orderFraction,
               layerId,
               strategyId,
+              entryPresetId: entryPreset.entryPresetId,
+              entryPreset: entryPresetResolved,
+              timeframe: layerConfig?.timeframe,
               exitPresetId: pos.exitPresetId || exitPreset.exitPresetId,
               exitConfig: exitPreset.exitConfig,
+              exitPreset: exitPresetMap[exitPreset.exitPresetId],
               exitConfigResolver,
               riskAllocatedUSD: maxRiskUsd,
             }
@@ -811,7 +870,8 @@ async function runMarketLoop(market) {
           sym,
           context.positions,
           context.lastPrices,
-          marketClient,
+          dataProvider,
+          broker,
           marketConfig,
           config.KILL_SWITCH,
           false,
@@ -848,8 +908,12 @@ async function runMarketLoop(market) {
 // START HTTP + BOT
 // =======================
 startHttpServer(shared);
-runMarketLoop("crypto");
-runMarketLoop("stocks");
+if (config.MARKET_TYPE === "crypto") {
+  runMarketLoop("crypto");
+}
+if (config.MARKET_TYPE === "stocks") {
+  runMarketLoop("stocks");
+}
 
 
 

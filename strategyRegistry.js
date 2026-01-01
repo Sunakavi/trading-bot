@@ -1,4 +1,5 @@
 const { config, CANDLE_RED_TRIGGER_PCT } = require("./config");
+const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
 
 function normalizeLayerId(id) {
   if (typeof id !== "string") return "";
@@ -15,25 +16,56 @@ function resolveLayerStrategy(layerConfig = {}) {
   return Number.isFinite(id) ? id : 2;
 }
 
-function resolveLayerExitPreset(layerConfig = {}) {
+function resolveLayerEntryPreset(layerConfig = {}, entryPresets = {}) {
+  const presetId =
+    typeof layerConfig.entryPresetId === "string"
+      ? layerConfig.entryPresetId
+      : "CORE_TREND";
+  const preset = entryPresets[presetId];
+  return {
+    entryPresetId: presetId,
+    entryPreset: preset || null,
+  };
+}
+
+function resolveLayerExitPreset(layerConfig = {}, exitPresets = {}) {
   const exitPreset = layerConfig.exitPreset || {};
+  const presetId =
+    typeof layerConfig.exitPresetId === "string"
+      ? layerConfig.exitPresetId
+      : "DEFAULT_EXIT";
+  const resolvedPreset = exitPresets[presetId] || {};
   const exitConfig = {
-    SL_PCT: Number(exitPreset.SL_PCT ?? config.SL_PCT),
-    TP_PCT: Number(exitPreset.TP_PCT ?? config.TP_PCT),
-    TRAIL_START_PCT: Number(exitPreset.TRAIL_START_PCT ?? config.TRAIL_START_PCT),
+    SL_PCT: Number(
+      exitPreset.SL_PCT ?? resolvedPreset.SL_PCT ?? config.SL_PCT
+    ),
+    TP_PCT: Number(
+      exitPreset.TP_PCT ?? resolvedPreset.TP_PCT ?? config.TP_PCT
+    ),
+    TRAIL_START_PCT: Number(
+      exitPreset.TRAIL_START_PCT ??
+        resolvedPreset.TRAIL_START_PCT ??
+        config.TRAIL_START_PCT
+    ),
     TRAIL_DISTANCE_PCT: Number(
-      exitPreset.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT
+      exitPreset.TRAIL_DISTANCE_PCT ??
+        resolvedPreset.TRAIL_DISTANCE_PCT ??
+        config.TRAIL_DISTANCE_PCT
     ),
     CANDLE_EXIT_ENABLED: Boolean(
-      exitPreset.CANDLE_EXIT_ENABLED ?? config.USE_CANDLE_EXIT
+      exitPreset.CANDLE_EXIT_ENABLED ??
+        resolvedPreset.CANDLE_EXIT_ENABLED ??
+        config.USE_CANDLE_EXIT
     ),
     CANDLE_RED_TRIGGER_PCT: Number(
-      exitPreset.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT
+      exitPreset.CANDLE_RED_TRIGGER_PCT ??
+        resolvedPreset.CANDLE_RED_TRIGGER_PCT ??
+        CANDLE_RED_TRIGGER_PCT
     ),
   };
 
   return {
-    exitPresetId: normalizeExitPresetId(layerConfig.exitPresetId),
+    exitPresetId: normalizeExitPresetId(presetId),
     exitConfig,
   };
 }
@@ -73,6 +105,10 @@ function resolveExitPresetById(exitPresets = {}, exitPresetId, fallbackConfig) {
 
 function buildExitPresetMap(layers = []) {
   const presets = {};
+  const basePresets = StrategyPortfolioConfig.exitPresets || {};
+  Object.keys(basePresets).forEach((id) => {
+    presets[id] = { ...basePresets[id] };
+  });
   layers.forEach((layer) => {
     if (!layer || typeof layer !== "object") return;
     const id = normalizeExitPresetId(layer.exitPresetId);
@@ -84,10 +120,29 @@ function buildExitPresetMap(layers = []) {
   return presets;
 }
 
+function buildEntryPresetMap(layers = []) {
+  const presets = {};
+  const basePresets = StrategyPortfolioConfig.entryPresets || {};
+  Object.keys(basePresets).forEach((id) => {
+    presets[id] = { ...basePresets[id] };
+  });
+  layers.forEach((layer) => {
+    if (!layer || typeof layer !== "object") return;
+    const id = typeof layer.entryPresetId === "string" ? layer.entryPresetId : "";
+    if (!id || presets[id]) return;
+    if (layer.entryPreset && typeof layer.entryPreset === "object") {
+      presets[id] = { ...layer.entryPreset };
+    }
+  });
+  return presets;
+}
+
 module.exports = {
   normalizeLayerId,
   resolveLayerStrategy,
+  resolveLayerEntryPreset,
   resolveLayerExitPreset,
   resolveExitPresetById,
   buildExitPresetMap,
+  buildEntryPresetMap,
 };

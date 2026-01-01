@@ -17,6 +17,16 @@ function getOpenPositionCounts(positions = {}) {
   return { perLayer, totalOpen };
 }
 
+function getOpenRiskAllocated(positions = {}) {
+  let total = 0;
+  Object.values(positions).forEach((pos) => {
+    if (!pos?.hasPosition) return;
+    const risk = Number(pos.riskAllocatedUSD);
+    if (Number.isFinite(risk) && risk > 0) total += risk;
+  });
+  return total;
+}
+
 function getLayerExposure(positions = {}, lastPrices = {}) {
   const perLayer = {};
 
@@ -62,16 +72,20 @@ function canOpenPosition({
   lastPrices,
   equity,
   globalMaxOpenPositions,
+  globalRisk,
 }) {
   const id = normalizeLayerId(layerId) || "UNASSIGNED";
   const { perLayer, totalOpen } = getOpenPositionCounts(positions);
   const maxOpen = Number(layerConfig?.maxOpenPositions ?? 0);
+  const maxTotalPositions = Number(
+    globalRisk?.maxTotalPositions ?? globalMaxOpenPositions
+  );
 
   if (layerState?.isPaused) {
     return { allowed: false, reason: "layer_paused" };
   }
 
-  if (Number.isFinite(globalMaxOpenPositions) && totalOpen >= globalMaxOpenPositions) {
+  if (Number.isFinite(maxTotalPositions) && totalOpen >= maxTotalPositions) {
     return { allowed: false, reason: "global_max_open" };
   }
 
@@ -90,12 +104,21 @@ function canOpenPosition({
     return { allowed: false, reason: "layer_budget_exhausted" };
   }
 
+  const maxOpenRiskPct = Number(globalRisk?.maxOpenRiskPct);
+  if (Number.isFinite(maxOpenRiskPct) && equity > 0) {
+    const openRisk = getOpenRiskAllocated(positions);
+    if (openRisk >= equity * (maxOpenRiskPct / 100)) {
+      return { allowed: false, reason: "global_risk_cap" };
+    }
+  }
+
   return { allowed: true };
 }
 
 module.exports = {
   normalizeLayerId,
   getOpenPositionCounts,
+  getOpenRiskAllocated,
   getLayerExposure,
   computeLayerBudgets,
   canOpenPosition,

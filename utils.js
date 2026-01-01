@@ -96,6 +96,82 @@ function calcATR(candles, period) {
   return atr;
 }
 
+function calcADX(candles, period = 14) {
+  if (!Array.isArray(candles) || candles.length < period + 1) return null;
+
+  let trSum = 0;
+  let plusDmSum = 0;
+  let minusDmSum = 0;
+
+  for (let i = candles.length - period; i < candles.length; i++) {
+    const curr = candles[i];
+    const prev = candles[i - 1];
+    if (!curr || !prev) continue;
+
+    const upMove = curr.high - prev.high;
+    const downMove = prev.low - curr.low;
+
+    const plusDm = upMove > downMove && upMove > 0 ? upMove : 0;
+    const minusDm = downMove > upMove && downMove > 0 ? downMove : 0;
+
+    const tr = calculateTrueRange(curr, prev.close);
+
+    trSum += tr;
+    plusDmSum += plusDm;
+    minusDmSum += minusDm;
+  }
+
+  if (trSum === 0) return null;
+
+  const plusDi = (plusDmSum / trSum) * 100;
+  const minusDi = (minusDmSum / trSum) * 100;
+  const dx = Math.abs(plusDi - minusDi) / Math.max(plusDi + minusDi, 1e-9);
+
+  return dx * 100;
+}
+
+function calcVWAP(candles = []) {
+  if (!candles.length) return null;
+  let totalPv = 0;
+  let totalVol = 0;
+  candles.forEach((c) => {
+    const typical = (c.high + c.low + c.close) / 3;
+    totalPv += typical * c.volume;
+    totalVol += c.volume;
+  });
+  if (totalVol === 0) return null;
+  return totalPv / totalVol;
+}
+
+function calcVolumeMA(candles = [], period = 20) {
+  if (!candles.length || candles.length < period) return null;
+  const slice = candles.slice(-period);
+  const sum = slice.reduce((acc, c) => acc + (c.volume || 0), 0);
+  return sum / period;
+}
+
+function getHighestHigh(candles = [], lookback = 20) {
+  if (!candles.length) return null;
+  const slice = candles.slice(-lookback);
+  let high = null;
+  slice.forEach((c) => {
+    if (!Number.isFinite(c.high)) return;
+    if (high === null || c.high > high) high = c.high;
+  });
+  return high;
+}
+
+function getLowestLow(candles = [], lookback = 20) {
+  if (!candles.length) return null;
+  const slice = candles.slice(-lookback);
+  let low = null;
+  slice.forEach((c) => {
+    if (!Number.isFinite(c.low)) return;
+    if (low === null || c.low < low) low = c.low;
+  });
+  return low;
+}
+
 
 // --- Candle Patterns ---
 
@@ -134,6 +210,11 @@ module.exports = {
   calcEMA,
   calcRSI,
   calcATR,
+  calcADX,
+  calcVWAP,
+  calcVolumeMA,
+  getHighestHigh,
+  getLowestLow,
   parseKlines,
   isBullishEngulfing,
   isBullishHammer,

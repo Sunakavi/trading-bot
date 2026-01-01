@@ -1,5 +1,6 @@
 // config.js
 const { loadSettings, DEFAULT_SETTINGS } = require("./settingsManager");
+const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
 
 const COLORS = {
   RESET: "\x1b[0m",
@@ -20,7 +21,7 @@ const defaultSettings = {
   binanceApiSecret: process.env.BINANCE_API_SECRET,
   binanceBaseUrl: process.env.BINANCE_BASE_URL || "https://testnet.binance.vision",
   tradingViewWebhookUrl: process.env.TRADINGVIEW_WEBHOOK_URL || "",
-  marketType: process.env.MARKET_MODE || process.env.MARKET_TYPE || "crypto",
+  marketType: process.env.MARKET_MODE || process.env.MARKET_TYPE || "stocks",
   alpacaApiKey: process.env.ALPACA_API_KEY || "",
   alpacaApiSecret: process.env.ALPACA_API_SECRET || "",
   alpacaTradingBaseUrl:
@@ -74,7 +75,7 @@ const config = {
   STABLE_BASES: ["USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD"],
   FIAT_BASES: ["EUR", "TRY", "BRL", "PLN", "ARS", "ZAR", "JPY", "MXN"],
 
-  // TECHNICAL ANALYSIS (Settings for Strategy 2 - Trend/Pullback/RSI)
+  // TECHNICAL ANALYSIS (Legacy defaults)
   INTERVAL: "15m", // Trading interval
   KLINES_LIMIT: 250,
   FAST_MA: 25,
@@ -99,6 +100,7 @@ const config = {
   USE_CANDLE_EXIT,
   PORTFOLIO_LAYERS: resolvedSettings.PORTFOLIO_LAYERS,
   REGIME_RULES: resolvedSettings.REGIME_RULES,
+  STRATEGY_PORTFOLIO: StrategyPortfolioConfig,
 
 };
 
@@ -109,4 +111,5 @@ module.exports = {
   CANDLE_RED_TRIGGER_PCT,
   USE_CANDLE_EXIT,
   LOOP_SLEEP_MS: config.LOOP_SLEEP_MS,
+  StrategyPortfolioConfig,
 };

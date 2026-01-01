@@ -1,11 +1,18 @@
 const { detectRegime } = require("./regimeDetector");
-const { normalizeLayerId, computeLayerBudgets } = require("./riskEngine");
+const {
+  normalizeLayerId,
+  computeLayerBudgets,
+  getOpenPositionCounts,
+} = require("./riskEngine");
 const {
   resolveLayerStrategy,
+  resolveLayerEntryPreset,
   resolveLayerExitPreset,
+  buildEntryPresetMap,
   buildExitPresetMap,
 } = require("./strategyRegistry");
 const { getAllTrades } = require("./tradeHistory");
+const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -23,6 +30,16 @@ function sumPnLForLayer(trades, layerId, cutoffMs, now) {
     if (ts < cutoff) return acc;
     const pnl = Number(trade.pnlValue) || 0;
     return acc + pnl;
+  }, 0);
+}
+
+function sumPnLTotal(trades, cutoffMs, now) {
+  const cutoff = now - cutoffMs;
+  return trades.reduce((acc, trade) => {
+    if (!trade) return acc;
+    const ts = Date.parse(trade.time || trade.timestamp || "") || trade.timestamp || 0;
+    if (ts < cutoff) return acc;
+    return acc + (Number(trade.pnlValue) || 0);
   }, 0);
 }
 
@@ -85,8 +102,11 @@ function getTradingPlan(context = {}) {
   const persistedLayers = context.state?.portfolio?.layers || {};
   const layerStates = {};
   const layerStrategy = {};
+  const layerEntry = {};
   const layerExit = {};
   const layerConfigsById = {};
+  const entryPresetMap = buildEntryPresetMap(layers);
+  const exitPresetMap = buildExitPresetMap(layers);
 
   layers.forEach((layer) => {
     const id = normalizeLayerId(layer.id);
@@ -100,7 +120,8 @@ function getTradingPlan(context = {}) {
       now
     );
     layerStrategy[id] = resolveLayerStrategy(layer);
-    layerExit[id] = resolveLayerExitPreset(layer);
+    layerEntry[id] = resolveLayerEntryPreset(layer, entryPresetMap);
+    layerExit[id] = resolveLayerExitPreset(layer, exitPresetMap);
   });
 
   const enabledLayers = layers
@@ -116,20 +137,32 @@ function getTradingPlan(context = {}) {
     lastPrices: context.lastPrices,
   });
 
-  const exitPresetMap = buildExitPresetMap(layers);
+  const openCounts = getOpenPositionCounts(context.positions);
+  const dailyPnl = sumPnLTotal(trades, DAY_MS, now);
+  const globalRisk = StrategyPortfolioConfig.globalRisk || {};
+  const dailyStopPct = Number(globalRisk.dailyStopPct) || 0;
+  const dailyStopHit =
+    equity > 0 && dailyStopPct > 0
+      ? Math.max(0, -dailyPnl) / equity >= dailyStopPct / 100
+      : false;
+  const effectiveEnabledLayers = dailyStopHit ? [] : enabledLayers;
+
   return {
     regime,
-    enabledLayers,
+    enabledLayers: effectiveEnabledLayers,
     layerBudgets,
     layerStrategy,
+    layerEntry,
     layerExit,
     layerStates,
     layerConfigsById,
+    entryPresetMap,
     exitPresetMap,
     openCounts,
     statePatch: {
       portfolio: {
         regime,
+        dailyStopHit,
         layers: layerStates,
         lastPlanTs: now,
       },

@@ -5,64 +5,21 @@ const { loadState, updateState } = require("./stateManager");
 
 const SETTINGS_FILE = resolveDataPath("settings.json");
 
+const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
+
 const DEFAULT_SETTINGS = {
   binanceApiKey: "",
   binanceApiSecret: "",
   binanceBaseUrl: "https://testnet.binance.vision",
   tradingViewWebhookUrl: "",
-  marketType: "crypto",
+  marketType: "stocks",
   alpacaApiKey: "",
   alpacaApiSecret: "",
   alpacaTradingBaseUrl: "https://paper-api.alpaca.markets",
   alpacaDataBaseUrl: "https://data.alpaca.markets",
   alpacaDataFeed: "iex",
-  PORTFOLIO_LAYERS: [
-    {
-      id: "CORE",
-      name: "Core",
-      allocationPct: 0.5,
-      maxRiskPerTradePct: 1.0,
-      maxOpenPositions: 3,
-      strategyPresetId: 102,
-      exitPresetId: "CORE_EXIT",
-      exitPreset: {},
-      lossStopDailyPct: 2.0,
-      lossStopWeeklyPct: 5.0,
-      cooldownHoursAfterStop: 6,
-    },
-    {
-      id: "SWING",
-      name: "Swing",
-      allocationPct: 0.35,
-      maxRiskPerTradePct: 0.7,
-      maxOpenPositions: 5,
-      strategyPresetId: 104,
-      exitPresetId: "SWING_EXIT",
-      exitPreset: {},
-      lossStopDailyPct: 2.5,
-      lossStopWeeklyPct: 6.0,
-      cooldownHoursAfterStop: 6,
-    },
-    {
-      id: "AGGR",
-      name: "Aggressive",
-      allocationPct: 0.15,
-      maxRiskPerTradePct: 0.3,
-      maxOpenPositions: 2,
-      strategyPresetId: 103,
-      exitPresetId: "AGGR_EXIT",
-      exitPreset: {},
-      lossStopDailyPct: 3.0,
-      lossStopWeeklyPct: 7.0,
-      cooldownHoursAfterStop: 8,
-    },
-  ],
-  REGIME_RULES: {
-    TREND: ["CORE", "SWING"],
-    RANGE: ["SWING"],
-    VOLATILE: ["AGGR"],
-    OFF: [],
-  },
+  PORTFOLIO_LAYERS: StrategyPortfolioConfig.layers.map((layer) => ({ ...layer })),
+  REGIME_RULES: { ...StrategyPortfolioConfig.regimeRules },
 };
 
 function normalizeLayerId(id) {
@@ -96,10 +53,14 @@ function normalizePortfolioLayers(layers) {
           Number.isFinite(maxOpenPositions) && maxOpenPositions >= 0
             ? maxOpenPositions
             : 0,
+        entryPresetId:
+          typeof layer.entryPresetId === "string"
+            ? layer.entryPresetId
+            : "CORE_TREND",
         strategyPresetId:
           Number.isFinite(Number(layer.strategyPresetId))
             ? Number(layer.strategyPresetId)
-            : 2,
+            : undefined,
         exitPresetId:
           typeof layer.exitPresetId === "string"
             ? layer.exitPresetId
@@ -108,6 +69,10 @@ function normalizePortfolioLayers(layers) {
           layer.exitPreset && typeof layer.exitPreset === "object"
             ? { ...layer.exitPreset }
             : {},
+        timeframe:
+          typeof layer.timeframe === "string"
+            ? layer.timeframe
+            : "1h",
         lossStopDailyPct:
           Number.isFinite(lossStopDailyPct) && lossStopDailyPct >= 0
             ? lossStopDailyPct

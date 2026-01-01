@@ -2,15 +2,23 @@
 
 const {
   calcSMA,
-  calcEMA, 
+  calcEMA,
   calcRSI,
-  calcATR, 
+  calcATR,
+  calcADX,
+  calcVWAP,
+  calcVolumeMA,
+  getHighestHigh,
   isBullishEngulfing,
   isBullishHammer,
 } = require("./utils");
 const { log } = require("./log");
 const { COLORS } = require("./config");
 const { addTrade } = require("./tradeHistory");
+const {
+  shouldEvaluate,
+  getCandleTimestamp,
+} = require("./timeframeResolver");
 
 
 /**
@@ -26,10 +34,18 @@ function initPositions(symbols) {
       maxPrice: 0,
       layerId: null,
       strategyId: null,
+      entryPresetId: null,
       exitPresetId: null,
       riskAllocatedUSD: null,
       openedAt: null,
       cooldownUntil: null,
+      entryBarTs: null,
+      lastEvaluatedAt: null,
+      initialStop: null,
+      trailingStop: null,
+      entryAtr: null,
+      entryR: null,
+      breakoutLevel: null,
     };
   });
   return positions;
@@ -141,6 +157,112 @@ function checkEntryEmaVolume(candles, config, logFn = log) {
   return isCrossover && isAboveEMA && volatilityOk;
 }
 
+function evaluateCoreEntry(candles, preset, logFn = log) {
+  const closes = candles.map((c) => c.close);
+  const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
+  if (!last || !prev) return false;
+  const prev = candles[candles.length - 2];
+
+  const emaFast = calcEMA(closes, preset.emaFast);
+  const emaSlow = calcEMA(closes, preset.emaSlow);
+  const adx = calcADX(candles, preset.adxPeriod);
+  const rsi = calcRSI(closes, preset.rsiPeriod);
+
+  if (!emaFast || !emaSlow || !adx || rsi === null) return false;
+
+  const trendOk = emaFast > emaSlow && last.close > emaFast;
+  const adxOk = adx >= preset.adxMin;
+  const rsiOk = rsi >= preset.rsiMin && rsi <= preset.rsiMax;
+
+  const pullback =
+    preset.pullbackToEma &&
+    prev.close < emaFast &&
+    last.close > emaFast;
+
+  const entryOk = trendOk && adxOk && rsiOk && pullback;
+
+  logFn(
+    `[Entry CORE] trend=${trendOk} adx=${adx.toFixed(
+      1
+    )} rsi=${rsi.toFixed(0)} pullback=${pullback}`
+  );
+
+  return entryOk;
+}
+
+function evaluateSwingEntry(candles, preset, logFn = log) {
+  const closes = candles.map((c) => c.close);
+  const last = candles[candles.length - 1];
+
+  const emaFast = calcEMA(closes, preset.emaFast);
+  const emaSlow = calcEMA(closes, preset.emaSlow);
+  const rsi = calcRSI(closes, preset.rsiPeriod);
+  const atr = calcATR(candles, preset.atrPeriod);
+  const swingHigh = getHighestHigh(candles.slice(0, -1), preset.swingLookback);
+
+  if (!emaFast || !emaSlow || rsi === null || !atr || !swingHigh) return false;
+
+  const trendOk = emaFast > emaSlow;
+  const pullbackPct = ((swingHigh - last.close) / swingHigh) * 100;
+  const pullbackOk =
+    pullbackPct >= preset.pullbackMinPct &&
+    pullbackPct <= preset.pullbackMaxPct;
+  const rsiOk = rsi >= preset.rsiMin && rsi <= preset.rsiMax;
+  const atrPct = (atr / last.close) * 100;
+  const atrOk = atrPct >= preset.atrPctMin && atrPct <= preset.atrPctMax;
+
+  const reclaim =
+    prev.close <= emaFast &&
+    last.close > emaFast &&
+    last.close > last.open;
+
+  const entryOk = trendOk && pullbackOk && rsiOk && atrOk && reclaim;
+
+  logFn(
+    `[Entry SWING] trend=${trendOk} pullback=${pullbackPct.toFixed(
+      2
+    )}% rsi=${rsi.toFixed(0)} atrPct=${atrPct.toFixed(2)} reclaim=${reclaim}`
+  );
+
+  return entryOk;
+}
+
+function evaluateAggressiveEntry(candles, preset, logFn = log) {
+  const closes = candles.map((c) => c.close);
+  const last = candles[candles.length - 1];
+  const ema = calcEMA(closes, preset.emaPeriod);
+  const emaPrev = calcEMA(closes.slice(0, -1), preset.emaPeriod);
+  const rsi = calcRSI(closes, preset.rsiPeriod);
+  const vwap = calcVWAP(candles);
+  const breakoutHigh = getHighestHigh(
+    candles.slice(0, -1),
+    preset.breakoutLookback
+  );
+  const volMa = calcVolumeMA(candles, preset.volumeMaPeriod);
+
+  if (!ema || emaPrev === null || rsi === null || !breakoutHigh || !volMa) {
+    return { enter: false, breakoutLevel: null };
+  }
+
+  const emaRising = ema > emaPrev;
+  const vwapOk = vwap ? last.close > vwap : false;
+  const trendOk = vwapOk || emaRising;
+  const breakoutOk = last.close > breakoutHigh;
+  const volOk = last.volume >= preset.volumeMultiplier * volMa;
+  const rsiOk = rsi >= preset.rsiMin && rsi <= preset.rsiMax;
+
+  const entryOk = trendOk && breakoutOk && volOk && rsiOk;
+
+  logFn(
+    `[Entry AGGR] trend=${trendOk} breakout=${breakoutOk} vol=${volOk} rsi=${rsi.toFixed(
+      0
+    )}`
+  );
+
+  return { enter: entryOk, breakoutLevel: breakoutHigh };
+}
+
 
 // =========================================================
 // CORE EXECUTION FUNCTION
@@ -150,7 +272,8 @@ async function runSymbolStrategy(
   symbol,
   positions,
   lastPrices,
-  marketClient,
+  dataProvider,
+  broker,
   config,
   killSwitch,
   sellSwitch,
@@ -167,12 +290,16 @@ async function runSymbolStrategy(
     const allowEntries = options.allowEntries !== false;
     const entryStrategyId =
       Number(options.strategyId) || Number(activeStrategyId) || 2;
+    const entryPresetId = options.entryPresetId || null;
+    const entryPreset = options.entryPreset || null;
+    const exitPresetId = options.exitPresetId || null;
+    const exitPreset = options.exitPreset || null;
+    const timeframe = options.timeframe || config.INTERVAL;
     const requestedOrderFraction = Number(options.orderFraction);
     const orderFraction =
       Number.isFinite(requestedOrderFraction) && requestedOrderFraction > 0
         ? requestedOrderFraction
         : Number(config.QUOTE_ORDER_FRACTION) || 0;
-    const exitPresetId = options.exitPresetId || null;
     const exitConfig =
       options.exitConfigResolver && options.exitPresetId
         ? options.exitConfigResolver(options.exitPresetId)
@@ -191,18 +318,27 @@ async function runSymbolStrategy(
         exitConfig?.CANDLE_RED_TRIGGER_PCT ?? candleRedTriggerPct
       ),
     };
-    // Fetch Klines
-    const candles = await marketClient.fetchKlines(
-      symbol,
-      config.INTERVAL,
-      config.KLINES_LIMIT
+    const candles = dataProvider.getBars
+      ? await dataProvider.getBars(symbol, timeframe, config.KLINES_LIMIT)
+      : await dataProvider.fetchKlines(symbol, timeframe, config.KLINES_LIMIT);
+
+    const minRequired = Math.max(
+      config.SLOW_MA,
+      entryPreset?.emaSlow || 0,
+      entryPreset?.emaFast || 0,
+      entryPreset?.emaPeriod || 0,
+      entryPreset?.swingLookback || 0,
+      entryPreset?.breakoutLookback || 0,
+      exitPreset?.trendExitSlowEma || 0,
+      exitPreset?.trendExitFastEma || 0,
+      exitPreset?.atrPeriod ? exitPreset.atrPeriod + 1 : 0
     );
 
-    if (!candles || candles.length < config.SLOW_MA) {
+    if (!candles || candles.length < minRequired) {
       logger(
         `[${symbol}] NOT ENOUGH CANDLES: have=${
           candles ? candles.length : 0
-        }, need=${config.SLOW_MA}`
+        }, need=${minRequired}`
       );
       positions[symbol] = positions[symbol] || { hasPosition: false, entryPrice: 0, qty: 0, maxPrice: 0, };
       return;
@@ -213,6 +349,16 @@ async function runSymbolStrategy(
     const prev = candles[candles.length - 2];
 
     lastPrices[symbol] = last.close;
+
+    if (!shouldEvaluate(candles, positions[symbol], timeframe)) {
+      positions[symbol] = positions[symbol] || {
+        hasPosition: false,
+        entryPrice: 0,
+        qty: 0,
+        maxPrice: 0,
+      };
+      return;
+    }
 
     // Calculate TAs needed for multiple strategies
     const maFast = calcSMA(closes, config.FAST_MA);
@@ -227,10 +373,18 @@ async function runSymbolStrategy(
       maxPrice: 0,
       layerId: null,
       strategyId: null,
+      entryPresetId: null,
       exitPresetId: null,
       riskAllocatedUSD: null,
       openedAt: null,
       cooldownUntil: null,
+      entryBarTs: null,
+      lastEvaluatedAt: null,
+      initialStop: null,
+      trailingStop: null,
+      entryAtr: null,
+      entryR: null,
+      breakoutLevel: null,
     };
 
     if (killSwitch) {
@@ -244,9 +398,9 @@ async function runSymbolStrategy(
       await handleExit(
         symbol,
         pos,
-        last,
-        prev,
-        marketClient,
+        candles,
+        dataProvider,
+        broker,
         config,
         sellSwitch,
         resolvedExitConfig.CANDLE_RED_TRIGGER_PCT,
@@ -254,6 +408,7 @@ async function runSymbolStrategy(
         market,
         logger,
         resolvedExitConfig,
+        exitPreset,
         options
       );
     }
@@ -263,43 +418,60 @@ async function runSymbolStrategy(
       return;
     }
 
-    // 2. ENTRY LOGIC: Select strategy based on entryStrategyId
+    // 2. ENTRY LOGIC: Select strategy based on entry preset or legacy strategyId
     let isEntryConditionMet = false;
-    
-    switch (entryStrategyId) {
-      case 1:
-        isEntryConditionMet = checkEntryGoldenCross(
-          closes,
-          config.FAST_MA,
-          config.SLOW_MA,
-          logger
-        );
-        break;
-      case 2:
-      case 101: // Conservative Trend Entry
-      case 102: // Aggressive Trend Entry
-      case 104: // Deep Pullback Entry
-      case 107: // MA Slope Entry
-        isEntryConditionMet = checkEntryTrendPullback(
-          candles,
-          closes,
-          maFast,
-          maSlow,
-          rsi,
-          config,
-          logger
-        );
-        break;
-      case 3:
-      case 103: // Scalping Mode
-      case 105: // Breakout Entry
-      case 106: // Volatility Adaptive Entry (ATR-Based)
-      case 108: // EMA + ATR Core (Enhanced Version)
-        isEntryConditionMet = checkEntryEmaVolume(candles, config, logger);
-        break;
-      default:
-        log(COLORS.RED + `[${symbol}] Invalid Strategy ID: ${entryStrategyId}` + COLORS.RESET);
-        return;
+    let entryBreakoutLevel = null;
+
+    if (entryPreset) {
+      if (entryPresetId === "CORE_TREND") {
+        isEntryConditionMet = evaluateCoreEntry(candles, entryPreset, logger);
+      } else if (entryPresetId === "SWING_PULLBACK") {
+        isEntryConditionMet = evaluateSwingEntry(candles, entryPreset, logger);
+      } else if (entryPresetId === "AGGR_BREAKOUT") {
+        const result = evaluateAggressiveEntry(candles, entryPreset, logger);
+        isEntryConditionMet = result.enter;
+        entryBreakoutLevel = result.breakoutLevel;
+      }
+    } else {
+      switch (entryStrategyId) {
+        case 1:
+          isEntryConditionMet = checkEntryGoldenCross(
+            closes,
+            config.FAST_MA,
+            config.SLOW_MA,
+            logger
+          );
+          break;
+        case 2:
+        case 101: // Conservative Trend Entry
+        case 102: // Aggressive Trend Entry
+        case 104: // Deep Pullback Entry
+        case 107: // MA Slope Entry
+          isEntryConditionMet = checkEntryTrendPullback(
+            candles,
+            closes,
+            maFast,
+            maSlow,
+            rsi,
+            config,
+            logger
+          );
+          break;
+        case 3:
+        case 103: // Scalping Mode
+        case 105: // Breakout Entry
+        case 106: // Volatility Adaptive Entry (ATR-Based)
+        case 108: // EMA + ATR Core (Enhanced Version)
+          isEntryConditionMet = checkEntryEmaVolume(candles, config, logger);
+          break;
+        default:
+          log(
+            COLORS.RED +
+              `[${symbol}] Invalid Strategy ID: ${entryStrategyId}` +
+              COLORS.RESET
+          );
+          return;
+      }
     }
     
     // 3. Execute BUY if conditions are met and no position is open
@@ -310,11 +482,13 @@ async function runSymbolStrategy(
           COLORS.RESET
       );
 
-      const result = await marketClient.buyMarket(
-        symbol,
-        config.QUOTE,
-        orderFraction
-      );
+      const result = broker.buyMarket
+        ? await broker.buyMarket(symbol, config.QUOTE, orderFraction)
+        : await broker.placeOrder?.({
+            symbol,
+            side: "buy",
+            qty: null,
+          });
 
       if (result) {
         // Update state on successful buy
@@ -324,15 +498,24 @@ async function runSymbolStrategy(
         pos.maxPrice = result.avgPrice; // Initial maxPrice
         pos.layerId = options.layerId || pos.layerId;
         pos.strategyId = entryStrategyId;
+        pos.entryPresetId = entryPresetId || pos.entryPresetId;
         pos.exitPresetId = exitPresetId || pos.exitPresetId;
         pos.riskAllocatedUSD =
           options.riskAllocatedUSD ?? pos.riskAllocatedUSD ?? null;
         pos.openedAt = Date.now();
+        pos.entryBarTs = getCandleTimestamp(last) || Date.now();
+        pos.lastEvaluatedAt = getCandleTimestamp(last) || Date.now();
+        pos.initialStop = null;
+        pos.trailingStop = null;
+        pos.entryAtr = null;
+        pos.entryR = null;
+        if (entryBreakoutLevel) pos.breakoutLevel = entryBreakoutLevel;
       }
     } else if (!pos.hasPosition) {
        log(`[${symbol}] NO POS | Strategy ${entryStrategyId} conditions NOT met.`);
     }
 
+    pos.lastEvaluatedAt = getCandleTimestamp(last) || pos.lastEvaluatedAt;
     // Final state update
     positions[symbol] = pos;
   } catch (err) {
@@ -346,9 +529,9 @@ async function runSymbolStrategy(
 async function handleExit(
   symbol,
   pos,
-  last,
-  prev,
-  marketClient,
+  candles,
+  dataProvider,
+  broker,
   config,
   sellSwitch,
   candleRedTriggerPct,
@@ -356,10 +539,14 @@ async function handleExit(
   market,
   logFn = log,
   exitConfig = null,
+  exitPreset = null,
   options = {}
 ) {
   const logger = typeof logFn === "function" ? logFn : log;
   const log = logger;
+  const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
+  if (!last || !prev) return false;
   const price = last.close;
   const entry = pos.entryPrice;
 
@@ -376,21 +563,82 @@ async function handleExit(
     exitConfig?.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT
   );
 
-  const baseSL = entry * (1 - slPct);
-  const baseTP = entry * (1 + tpPct);
-
+  let baseSL = entry * (1 - slPct);
+  let baseTP = entry * (1 + tpPct);
   let dynSL = baseSL;
+  let rawExitSignal = false;
 
-  // Trailing Stop Logic
-  if (price >= entry * (1 + trailStartPct)) {
-    const trailSL = pos.maxPrice * (1 - trailDistancePct);
-    if (trailSL > dynSL) dynSL = trailSL;
+  if (exitPreset && exitPreset.initialAtrMult) {
+    const atr = calcATR(candles, exitPreset.atrPeriod || 14);
+    if (atr) {
+      if (!pos.entryAtr) pos.entryAtr = atr;
+      const stopDistance = (pos.entryAtr || atr) * exitPreset.initialAtrMult;
+      pos.initialStop = pos.initialStop || entry - stopDistance;
+      pos.entryR = pos.entryR || stopDistance;
+
+      const r = pos.entryR || stopDistance;
+      const tpR = exitPreset.takeProfitR || 0;
+      baseSL = pos.initialStop;
+      baseTP = tpR > 0 ? entry + r * tpR : null;
+
+      if (exitPreset.trailStartR && price >= entry + r * exitPreset.trailStartR) {
+        const trail = price - (pos.entryAtr || atr) * exitPreset.trailAtrMult;
+        if (!pos.trailingStop || trail > pos.trailingStop) {
+          pos.trailingStop = trail;
+        }
+      }
+
+      dynSL = pos.trailingStop && pos.trailingStop > baseSL ? pos.trailingStop : baseSL;
+
+      const hitTP = baseTP ? price >= baseTP : false;
+      const hitSL = price <= dynSL;
+      rawExitSignal = hitTP || hitSL;
+
+      if (exitPreset.trendExitFastEma && exitPreset.trendExitSlowEma) {
+        const closes = candles.map((c) => c.close);
+        const emaFast = calcEMA(closes, exitPreset.trendExitFastEma);
+        const emaSlow = calcEMA(closes, exitPreset.trendExitSlowEma);
+        if (emaFast && emaSlow && emaFast < emaSlow) {
+          rawExitSignal = true;
+        }
+      }
+
+      if (exitPreset.timeStopBars) {
+        const entryTs = pos.entryBarTs;
+        const barsSinceEntry = entryTs
+          ? candles.filter((c) => getCandleTimestamp(c) > entryTs).length
+          : 0;
+        if (barsSinceEntry >= exitPreset.timeStopBars) {
+          const minR = exitPreset.timeStopMinR || 0;
+          if (price < entry + r * minR) {
+            rawExitSignal = true;
+          }
+        }
+      }
+
+      if (exitPreset.invalidationBars && pos.breakoutLevel) {
+        const entryTs = pos.entryBarTs;
+        const barsSinceEntry = entryTs
+          ? candles.filter((c) => getCandleTimestamp(c) > entryTs).length
+          : 0;
+        if (barsSinceEntry <= exitPreset.invalidationBars) {
+          if (price < pos.breakoutLevel) {
+            rawExitSignal = true;
+          }
+        }
+      }
+    }
+  } else {
+    // Trailing Stop Logic (legacy)
+    if (price >= entry * (1 + trailStartPct)) {
+      const trailSL = pos.maxPrice * (1 - trailDistancePct);
+      if (trailSL > dynSL) dynSL = trailSL;
+    }
+
+    const hitTP = price >= baseTP;
+    const hitSL = price <= dynSL;
+    rawExitSignal = hitTP || hitSL;
   }
-  
-  // 3. Check for Exit Triggers
-  const hitTP = price >= baseTP;
-  const hitSL = price <= dynSL;
-  const rawExitSignal = hitTP || hitSL;
   
   // 4. Candle Confirmation Logic (Your original upgrade)
   const prevBody = Math.abs(prev.close - prev.open);
@@ -420,7 +668,13 @@ async function handleExit(
       COLORS.RESET
     );
     
-   const result = await marketClient.sellMarketAll(symbol, config.QUOTE);
+   const result = broker.sellMarketAll
+     ? await broker.sellMarketAll(symbol, config.QUOTE)
+     : await broker.placeOrder?.({
+         symbol,
+         side: "sell",
+         qty: pos.qty,
+       });
 
 if (result) {
   const exitPrice = result.avgPrice;
@@ -441,6 +695,7 @@ if (result) {
         pnlPct,
         layerId: pos.layerId || options.layerId || null,
         strategyId: pos.strategyId || options.strategyId || null,
+        entryPresetId: pos.entryPresetId || options.entryPresetId || null,
         exitPresetId: pos.exitPresetId || options.exitPresetId || null,
       },
       market
@@ -452,6 +707,14 @@ if (result) {
   pos.entryPrice = 0;
   pos.qty = 0;
   pos.maxPrice = 0;
+  pos.entryPresetId = null;
+  pos.exitPresetId = null;
+  pos.entryBarTs = null;
+  pos.initialStop = null;
+  pos.trailingStop = null;
+  pos.entryAtr = null;
+  pos.entryR = null;
+  pos.breakoutLevel = null;
 
   log(
     COLORS.RED +

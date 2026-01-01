@@ -143,50 +143,13 @@ class StockClient {
 
   async fetchTopSymbols(config) {
     try {
-      const res = await this.dataRequest(
-        "GET",
-        "/v1beta1/screener/stocks/most-actives"
-      );
-
-      const raw =
-        res.data?.most_actives ||
-        res.data?.mostActives ||
-        res.data?.data ||
-        res.data?.results ||
-        [];
-
-      const candidates = raw.filter((item) => item?.symbol);
-      const skipCounts = { notTradable: 0, otc: 0, halted: 0 };
-      const filtered = candidates.filter((item) => {
-        if (item.is_tradable === false) {
-          skipCounts.notTradable += 1;
-          return false;
-        }
-        if (item.is_otc === true || item.otc === true) {
-          skipCounts.otc += 1;
-          return false;
-        }
-        if (item.is_halted === true || item.halted === true) {
-          skipCounts.halted += 1;
-          return false;
-        }
-        return true;
-      });
-
-      const maxCandidates = filtered.slice(0, Math.max(config.MAX_SYMBOLS * 4, 50));
-      const symbols = maxCandidates.map((item) => item.symbol);
+      const symbols = await this.fetchMostActiveSymbols();
       const symbolsWithBars = await this.filterSymbolsWithBars(
         symbols,
         config.INTERVAL
       );
 
       const topSymbols = symbolsWithBars.slice(0, config.MAX_SYMBOLS);
-      if (skipCounts.notTradable || skipCounts.otc || skipCounts.halted) {
-        this.log(
-          `[STOCKS] Skipped symbols: notTradable=${skipCounts.notTradable}, otc=${skipCounts.otc}, halted=${skipCounts.halted}`
-        );
-      }
-
       this.log("=== TOP STOCKS (Most Actives) ===");
       topSymbols.forEach((sym, i) => {
         this.log(`${i + 1}. ${sym}`);
@@ -220,6 +183,101 @@ class StockClient {
     });
   }
 
+  async fetchMostActiveSymbols() {
+    const res = await this.dataRequest(
+      "GET",
+      "/v1beta1/screener/stocks/most-actives"
+    );
+
+    const raw =
+      res.data?.most_actives ||
+      res.data?.mostActives ||
+      res.data?.data ||
+      res.data?.results ||
+      [];
+
+    const candidates = raw.filter((item) => item?.symbol);
+    const skipCounts = { notTradable: 0, otc: 0, halted: 0 };
+    const filtered = candidates.filter((item) => {
+      if (item.is_tradable === false) {
+        skipCounts.notTradable += 1;
+        return false;
+      }
+      if (item.is_otc === true || item.otc === true) {
+        skipCounts.otc += 1;
+        return false;
+      }
+      if (item.is_halted === true || item.halted === true) {
+        skipCounts.halted += 1;
+        return false;
+      }
+      return true;
+    });
+
+    if (skipCounts.notTradable || skipCounts.otc || skipCounts.halted) {
+      this.log(
+        `[STOCKS] Skipped symbols: notTradable=${skipCounts.notTradable}, otc=${skipCounts.otc}, halted=${skipCounts.halted}`
+      );
+    }
+
+    return filtered.map((item) => item.symbol);
+  }
+
+  async fetchSplits(symbols = [], date = new Date()) {
+    if (!symbols.length) return [];
+    const day = date.toISOString().slice(0, 10);
+    try {
+      const res = await this.tradingRequest("GET", "/v2/corporate_actions/announcements", {
+        ca_types: "split",
+        symbols: symbols.join(","),
+        start: day,
+        end: day,
+      });
+      const rows = res.data?.announcements || res.data?.data || [];
+      return Array.isArray(rows)
+        ? rows.map((row) => row?.symbol).filter(Boolean)
+        : [];
+    } catch (err) {
+      this.log(
+        COLORS.YELLOW + "[STOCKS] Split check failed:" + COLORS.RESET,
+        err.response?.data || err.message
+      );
+      return [];
+    }
+  }
+
+  async fetchDailyBarsBatch(symbols, limit = 20) {
+    if (!symbols.length) return {};
+    const res = await this.dataRequest("GET", "/v2/stocks/bars", {
+      symbols: symbols.join(","),
+      timeframe: "1Day",
+      limit,
+      feed: this.dataFeed,
+    });
+
+    const bars = res.data?.bars || {};
+    const normalized = {};
+    Object.keys(bars).forEach((symbol) => {
+      normalized[symbol] = bars[symbol]
+        .map((bar) => ({
+          open: Number(bar.o),
+          high: Number(bar.h),
+          low: Number(bar.l),
+          close: Number(bar.c),
+          volume: Number(bar.v) || 0,
+          time: bar.t,
+          ts: bar.t ? Date.parse(bar.t) : null,
+        }))
+        .filter((candle) =>
+          [candle.open, candle.high, candle.low, candle.close].every((value) =>
+            Number.isFinite(value)
+          )
+        );
+    });
+
+    return normalized;
+  }
+
   async fetchKlines(symbol, interval, limit) {
     const timeframe = INTERVAL_MAP[interval] || INTERVAL_MAP["15m"];
     const res = await this.dataRequest("GET", "/v2/stocks/bars", {
@@ -237,6 +295,8 @@ class StockClient {
         low: Number(bar.l),
         close: Number(bar.c),
         volume: Number(bar.v) || 0,
+        time: bar.t,
+        ts: bar.t ? Date.parse(bar.t) : null,
       }))
       .filter((candle) =>
         [candle.open, candle.high, candle.low, candle.close].every((value) =>
@@ -263,6 +323,24 @@ class StockClient {
     return close;
   }
 
+  async fetchQuote(symbol) {
+    const res = await this.dataRequest("GET", "/v2/stocks/bars", {
+      symbols: symbol,
+      timeframe: "1Min",
+      limit: 1,
+      feed: this.dataFeed,
+    });
+    const bars = res.data?.bars?.[symbol] || [];
+    if (!bars.length) {
+      throw new Error(`No quote for ${symbol}`);
+    }
+    const last = bars[bars.length - 1];
+    return {
+      price: Number(last.c),
+      time: last.t,
+    };
+  }
+
   async getAccount() {
     const [accountRes, positionsRes] = await Promise.all([
       this.tradingRequest("GET", "/v2/account"),
@@ -281,6 +359,30 @@ class StockClient {
     });
 
     return { balances, account: accountRes.data, positions };
+  }
+
+  async getPositions() {
+    const res = await this.tradingRequest("GET", "/v2/positions");
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  async placeOrder({ symbol, side, qty, timeInForce = "day", type = "market" }) {
+    if (!symbol || !side || !qty) return null;
+    const res = await this.tradingRequest("POST", "/v2/orders", undefined, {
+      symbol,
+      side,
+      type,
+      time_in_force: timeInForce,
+      qty: String(qty),
+      client_order_id: `${side.toUpperCase()}_${symbol}_${Date.now()}`,
+    });
+    return res.data;
+  }
+
+  async cancelOrder(orderId) {
+    if (!orderId) return null;
+    const res = await this.tradingRequest("DELETE", `/v2/orders/${orderId}`);
+    return res.data;
   }
 
   findBalance(accountData, asset) {
