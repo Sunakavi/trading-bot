@@ -70,7 +70,11 @@ function createMarketClient() {
   if (config.MARKET_TYPE === "stocks") {
     return new StockClient({
       quote: config.QUOTE,
-      initialCash: INITIAL_CAPITAL,
+      apiKey: config.ALPACA_API_KEY,
+      apiSecret: config.ALPACA_API_SECRET,
+      tradingBaseUrl: config.ALPACA_TRADING_BASE_URL,
+      dataBaseUrl: config.ALPACA_DATA_BASE_URL,
+      dataFeed: config.ALPACA_DATA_FEED,
     });
   }
 
@@ -389,6 +393,48 @@ async function mainLoop() {
         shared.interruptNow = false;
         continue;
       }
+      if (config.MARKET_TYPE === "stocks") {
+        try {
+          const clock = await marketClient.getClock();
+          if (!clock?.is_open) {
+            log(
+              COLORS.YELLOW +
+                `[MARKET] Stocks market closed. Next open: ${
+                  clock?.next_open || "unknown"
+                }` +
+                COLORS.RESET
+            );
+            await interruptibleSleep(runtimeConfig.loopIntervalMs);
+            continue;
+          }
+        } catch (err) {
+          log(
+            COLORS.YELLOW +
+              "[MARKET] Clock check failed, skipping this loop." +
+              COLORS.RESET,
+            err.response?.data || err.message
+          );
+          await interruptibleSleep(runtimeConfig.loopIntervalMs);
+          continue;
+        }
+
+        const refreshed = await marketClient.fetchTopSymbols(config);
+        if (Array.isArray(refreshed) && refreshed.length > 0) {
+          const openPositions = Object.entries(positions)
+            .filter(([, pos]) => pos?.hasPosition)
+            .map(([sym]) => sym);
+          const merged = Array.from(
+            new Set([...refreshed, ...openPositions])
+          );
+          const nextPositions = initPositions(merged);
+          merged.forEach((sym) => {
+            if (positions[sym]) nextPositions[sym] = positions[sym];
+          });
+          activeSymbols = merged;
+          positions = nextPositions;
+        }
+      }
+
 
       shared.interruptNow = false; // מתחילים איטרציה חדשה – מנקים דגל
       log(

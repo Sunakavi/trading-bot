@@ -503,8 +503,23 @@
         <label class="preset-input">Market Type
           <select id="marketTypeInput" class="text-input">
             <option value="crypto">Crypto (Binance)</option>
-            <option value="stocks">Stocks (Yahoo Finance)</option>
+            <option value="stocks">Stocks (Alpaca Paper)</option>
           </select>
+        </label>
+        <label class="preset-input">Alpaca API Key
+          <input id="alpacaApiKeyInput" class="text-input" type="text" placeholder="Enter Alpaca API key" />
+        </label>
+        <label class="preset-input">Alpaca Secret Key
+          <input id="alpacaApiSecretInput" class="text-input" type="password" placeholder="Enter Alpaca secret key" />
+        </label>
+        <label class="preset-input">Alpaca Trading Base URL
+          <input id="alpacaTradingBaseUrlInput" class="text-input" type="text" placeholder="https://paper-api.alpaca.markets" />
+        </label>
+        <label class="preset-input">Alpaca Data Base URL
+          <input id="alpacaDataBaseUrlInput" class="text-input" type="text" placeholder="https://data.alpaca.markets" />
+        </label>
+        <label class="preset-input">Alpaca Data Feed
+          <input id="alpacaDataFeedInput" class="text-input" type="text" placeholder="iex" />
         </label>
       </div>
       <div class="row" style="margin-top: 10px;">
@@ -842,6 +857,11 @@
       binanceBaseUrl: document.getElementById("binanceBaseUrlInput"),
       tradingViewWebhookUrl: document.getElementById("tradingViewWebhookInput"),
       marketType: document.getElementById("marketTypeInput"),
+      alpacaApiKey: document.getElementById("alpacaApiKeyInput"),
+      alpacaApiSecret: document.getElementById("alpacaApiSecretInput"),
+      alpacaTradingBaseUrl: document.getElementById("alpacaTradingBaseUrlInput"),
+      alpacaDataBaseUrl: document.getElementById("alpacaDataBaseUrlInput"),
+      alpacaDataFeed: document.getElementById("alpacaDataFeedInput"),
     };
 
     let selectedLogFile = "";
@@ -1650,6 +1670,13 @@
         settingsInputs.tradingViewWebhookUrl.value =
           settings.tradingViewWebhookUrl || "";
         settingsInputs.marketType.value = settings.marketType || "crypto";
+        settingsInputs.alpacaApiKey.value = settings.alpacaApiKey || "";
+        settingsInputs.alpacaApiSecret.value = settings.alpacaApiSecret || "";
+        settingsInputs.alpacaTradingBaseUrl.value =
+          settings.alpacaTradingBaseUrl || "";
+        settingsInputs.alpacaDataBaseUrl.value =
+          settings.alpacaDataBaseUrl || "";
+        settingsInputs.alpacaDataFeed.value = settings.alpacaDataFeed || "";
         settingsStatusEl.textContent = "";
       } catch (err) {
         settingsStatusEl.textContent = "Settings error: " + err.message;
@@ -1665,6 +1692,11 @@
           binanceBaseUrl: settingsInputs.binanceBaseUrl.value.trim(),
           tradingViewWebhookUrl: settingsInputs.tradingViewWebhookUrl.value.trim(),
           marketType: settingsInputs.marketType.value,
+          alpacaApiKey: settingsInputs.alpacaApiKey.value.trim(),
+          alpacaApiSecret: settingsInputs.alpacaApiSecret.value.trim(),
+          alpacaTradingBaseUrl: settingsInputs.alpacaTradingBaseUrl.value.trim(),
+          alpacaDataBaseUrl: settingsInputs.alpacaDataBaseUrl.value.trim(),
+          alpacaDataFeed: settingsInputs.alpacaDataFeed.value.trim(),
         };
 
         const res = await fetch("/api/settings", {

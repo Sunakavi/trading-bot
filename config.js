@@ -20,7 +20,15 @@ const defaultSettings = {
   binanceApiSecret: process.env.BINANCE_API_SECRET,
   binanceBaseUrl: process.env.BINANCE_BASE_URL || "https://testnet.binance.vision",
   tradingViewWebhookUrl: process.env.TRADINGVIEW_WEBHOOK_URL || "",
-  marketType: process.env.MARKET_TYPE || "crypto",
+  marketType: process.env.MARKET_MODE || process.env.MARKET_TYPE || "crypto",
+  alpacaApiKey: process.env.ALPACA_API_KEY || "",
+  alpacaApiSecret: process.env.ALPACA_API_SECRET || "",
+  alpacaTradingBaseUrl:
+    process.env.ALPACA_TRADING_BASE_URL ||
+    "https://paper-api.alpaca.markets",
+  alpacaDataBaseUrl:
+    process.env.ALPACA_DATA_BASE_URL || "https://data.alpaca.markets",
+  alpacaDataFeed: process.env.ALPACA_DATA_FEED || "iex",
 };
 
 const { settings: storedSettings, fromFile } = loadSettings();
@@ -35,13 +43,21 @@ const config = {
   BINANCE_BASE_URL: resolvedSettings.binanceBaseUrl,
   TRADINGVIEW_WEBHOOK_URL: resolvedSettings.tradingViewWebhookUrl,
   MARKET_TYPE: resolvedSettings.marketType === "stocks" ? "stocks" : "crypto",
+  MARKET_MODE: resolvedSettings.marketType === "stocks" ? "stocks" : "crypto",
   CRYPTO_QUOTE: "USDT",
   STOCK_QUOTE: "USD",
-  
+
+  // ALPACA API (Stocks)
+  ALPACA_API_KEY: resolvedSettings.alpacaApiKey,
+  ALPACA_API_SECRET: resolvedSettings.alpacaApiSecret,
+  ALPACA_TRADING_BASE_URL: resolvedSettings.alpacaTradingBaseUrl,
+  ALPACA_DATA_BASE_URL: resolvedSettings.alpacaDataBaseUrl,
+  ALPACA_DATA_FEED: resolvedSettings.alpacaDataFeed,
 
   // UNIVERSE SELECTION
   MAX_SYMBOLS: 10,
   QUOTE: resolvedSettings.marketType === "stocks" ? "USD" : "USDT",
+  STOCK_UNIVERSE_MODE: "most-actives",
   EXCLUDE_KEYWORDS: [
     "UP",
     "DOWN",

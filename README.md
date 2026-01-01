@@ -1,12 +1,12 @@
-Crypto Trading Bot (Binance Testnet + Stocks Paper)
+Crypto Trading Bot (Binance Testnet + Alpaca Paper Stocks)
 
-Automated algorithmic trading bot for Binance Testnet and a Yahoo Finance-backed
+Automated algorithmic trading bot for Binance Testnet and an Alpaca-backed
 stocks paper-trading mode. Built with Node.js, a custom exchange client, a
 multi-strategy engine, JSON persistence, trailing stops, RSI logic, candle-based
 exit confirmation, a web dashboard, and real-time keyboard controls.
 
 Features
-- Multi-market support: crypto (Binance Testnet) or stocks (Yahoo Finance paper)
+- Multi-market support: crypto (Binance Testnet) or stocks (Alpaca Paper)
 - Strategy models with live switching (IDs 1, 2, 3, 101-108)
 - Dynamic exits: SL/TP, trailing stop, candle confirmation
 - Runtime controls: loop interval, kill switch, reset funds, strategy changes
@@ -69,8 +69,13 @@ settings.json is created/updated by the dashboard and mirrors .env keys.
 - binanceBaseUrl (default https://testnet.binance.vision)
 - tradingViewWebhookUrl (optional)
 - marketType: crypto or stocks
+- alpacaApiKey
+- alpacaApiSecret
+- alpacaTradingBaseUrl (default https://paper-api.alpaca.markets)
+- alpacaDataBaseUrl (default https://data.alpaca.markets)
+- alpacaDataFeed (default iex)
 
-For stocks mode, the bot uses Yahoo Finance data and paper trading with USD as
+For stocks mode, the bot uses Alpaca data and paper trading with USD as
 the quote currency. Crypto mode uses Binance Testnet.
 
 Data Persistence on Railway
@@ -127,7 +132,7 @@ trading-bot/
 - server.js               # REST API + dashboard
 - config.js               # Global config + strategy params
 - binanceClient.js        # Binance Testnet API wrapper
-- stockClient.js          # Yahoo Finance paper-trading client
+- stockClient.js          # Alpaca paper-trading client
 - utils.js                # Technical indicators
 - strategy.js             # Strategy engine + execution
 - input.js                # Keyboard listener
@@ -158,6 +163,11 @@ Installation
    BINANCE_API_SECRET=your_secret_here
    BINANCE_BASE_URL=https://testnet.binance.vision
    MARKET_TYPE=crypto
+   ALPACA_API_KEY=your_key_here
+   ALPACA_API_SECRET=your_secret_here
+   ALPACA_TRADING_BASE_URL=https://paper-api.alpaca.markets
+   ALPACA_DATA_BASE_URL=https://data.alpaca.markets
+   ALPACA_DATA_FEED=iex
 
 Running the Bot
 node index.js

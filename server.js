@@ -184,6 +184,12 @@ function startHttpServer(shared = {}) {
     config.BINANCE_BASE_URL = baseUrl;
     config.TRADINGVIEW_WEBHOOK_URL = settings.tradingViewWebhookUrl;
     config.MARKET_TYPE = settings.marketType === "stocks" ? "stocks" : "crypto";
+    config.MARKET_MODE = config.MARKET_TYPE;
+    config.ALPACA_API_KEY = settings.alpacaApiKey;
+    config.ALPACA_API_SECRET = settings.alpacaApiSecret;
+    config.ALPACA_TRADING_BASE_URL = settings.alpacaTradingBaseUrl;
+    config.ALPACA_DATA_BASE_URL = settings.alpacaDataBaseUrl;
+    config.ALPACA_DATA_FEED = settings.alpacaDataFeed || config.ALPACA_DATA_FEED;
     config.QUOTE =
       config.MARKET_TYPE === "stocks" ? config.STOCK_QUOTE : config.CRYPTO_QUOTE;
 
@@ -192,6 +198,16 @@ function startHttpServer(shared = {}) {
         baseURL: baseUrl,
         apiKey: settings.binanceApiKey,
         apiSecret: settings.binanceApiSecret,
+      });
+    }
+
+    if (shared.marketClient && config.MARKET_TYPE === "stocks") {
+      shared.marketClient.setCredentials({
+        apiKey: settings.alpacaApiKey,
+        apiSecret: settings.alpacaApiSecret,
+        tradingBaseUrl: settings.alpacaTradingBaseUrl,
+        dataBaseUrl: settings.alpacaDataBaseUrl,
+        dataFeed: settings.alpacaDataFeed,
       });
     }
   }
@@ -209,6 +225,14 @@ function startHttpServer(shared = {}) {
         return "Both Binance API key and secret are required for crypto mode.";
       }
     }
+    if (marketType === "stocks") {
+      if (
+        (settings.alpacaApiKey && !settings.alpacaApiSecret) ||
+        (!settings.alpacaApiKey && settings.alpacaApiSecret)
+      ) {
+        return "Both Alpaca API key and secret are required for stocks mode.";
+      }
+    }
 
     if (settings.binanceBaseUrl) {
       try {
@@ -223,6 +247,22 @@ function startHttpServer(shared = {}) {
         new URL(settings.tradingViewWebhookUrl);
       } catch (err) {
         return "TradingView webhook URL must be a valid URL.";
+      }
+    }
+
+    if (settings.alpacaTradingBaseUrl) {
+      try {
+        new URL(settings.alpacaTradingBaseUrl);
+      } catch (err) {
+        return "Alpaca trading base URL must be a valid URL.";
+      }
+    }
+
+    if (settings.alpacaDataBaseUrl) {
+      try {
+        new URL(settings.alpacaDataBaseUrl);
+      } catch (err) {
+        return "Alpaca data base URL must be a valid URL.";
       }
     }
 

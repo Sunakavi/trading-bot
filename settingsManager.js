@@ -11,6 +11,11 @@ const DEFAULT_SETTINGS = {
   binanceBaseUrl: "https://testnet.binance.vision",
   tradingViewWebhookUrl: "",
   marketType: "crypto",
+  alpacaApiKey: "",
+  alpacaApiSecret: "",
+  alpacaTradingBaseUrl: "https://paper-api.alpaca.markets",
+  alpacaDataBaseUrl: "https://data.alpaca.markets",
+  alpacaDataFeed: "iex",
 };
 
 function normalizeSettings(input = {}) {
@@ -29,6 +34,21 @@ function normalizeSettings(input = {}) {
       input.marketType === "stocks" || input.marketType === "crypto"
         ? input.marketType
         : DEFAULT_SETTINGS.marketType,
+    alpacaApiKey: typeof input.alpacaApiKey === "string" ? input.alpacaApiKey : "",
+    alpacaApiSecret:
+      typeof input.alpacaApiSecret === "string" ? input.alpacaApiSecret : "",
+    alpacaTradingBaseUrl:
+      typeof input.alpacaTradingBaseUrl === "string" && input.alpacaTradingBaseUrl
+        ? input.alpacaTradingBaseUrl
+        : DEFAULT_SETTINGS.alpacaTradingBaseUrl,
+    alpacaDataBaseUrl:
+      typeof input.alpacaDataBaseUrl === "string" && input.alpacaDataBaseUrl
+        ? input.alpacaDataBaseUrl
+        : DEFAULT_SETTINGS.alpacaDataBaseUrl,
+    alpacaDataFeed:
+      typeof input.alpacaDataFeed === "string" && input.alpacaDataFeed
+        ? input.alpacaDataFeed
+        : DEFAULT_SETTINGS.alpacaDataFeed,
   };
 }
 

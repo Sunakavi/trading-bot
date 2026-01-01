@@ -1,64 +1,180 @@
-// stockClient.js (Yahoo Finance market data + paper trading)
+// stockClient.js (Alpaca market data + paper trading)
 const axios = require("axios");
 const { log } = require("./log");
 const { COLORS } = require("./config");
 
-const YAHOO_SCREENER_URL =
-  "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved";
-const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
+const DEFAULT_TRADING_URL = "https://paper-api.alpaca.markets";
+const DEFAULT_DATA_URL = "https://data.alpaca.markets";
 
 const INTERVAL_MAP = {
-  "1m": { interval: "1m", range: "1d" },
-  "5m": { interval: "5m", range: "5d" },
-  "15m": { interval: "15m", range: "7d" },
-  "30m": { interval: "30m", range: "1mo" },
-  "1h": { interval: "60m", range: "1mo" },
-  "4h": { interval: "60m", range: "3mo" },
-  "1d": { interval: "1d", range: "1y" },
+  "1m": "1Min",
+  "5m": "5Min",
+  "15m": "15Min",
+  "30m": "30Min",
+  "1h": "1Hour",
+  "4h": "4Hour",
+  "1d": "1Day",
+};
+
+const RETRY_CONFIG = {
+  attempts: 3,
+  baseDelayMs: 500,
 };
 
 class StockClient {
-  constructor({ quote = "USD", initialCash = 0 }) {
+  constructor({
+    quote = "USD",
+    apiKey = "",
+    apiSecret = "",
+    tradingBaseUrl = DEFAULT_TRADING_URL,
+    dataBaseUrl = DEFAULT_DATA_URL,
+    dataFeed = "iex",
+  }) {
     this.quote = quote;
-    this.cashBalance = initialCash;
-    this.holdings = {};
+    this.apiKey = apiKey;
+    this.apiSecret = apiSecret;
+    this.tradingBaseUrl = tradingBaseUrl;
+    this.dataBaseUrl = dataBaseUrl;
+    this.dataFeed = dataFeed;
   }
 
-  setCredentials() {
-    // No-op for stock data client.
+  setCredentials({ apiKey, apiSecret, tradingBaseUrl, dataBaseUrl, dataFeed }) {
+    if (typeof apiKey === "string") this.apiKey = apiKey;
+    if (typeof apiSecret === "string") this.apiSecret = apiSecret;
+    if (typeof tradingBaseUrl === "string" && tradingBaseUrl) {
+      this.tradingBaseUrl = tradingBaseUrl;
+    }
+    if (typeof dataBaseUrl === "string" && dataBaseUrl) {
+      this.dataBaseUrl = dataBaseUrl;
+    }
+    if (typeof dataFeed === "string" && dataFeed) {
+      this.dataFeed = dataFeed;
+    }
+  }
+
+  getAuthHeaders() {
+    return {
+      "APCA-API-KEY-ID": this.apiKey,
+      "APCA-API-SECRET-KEY": this.apiSecret,
+    };
+  }
+
+  async requestWithRetry(fn, label) {
+    let attempt = 0;
+    let lastErr;
+    while (attempt < RETRY_CONFIG.attempts) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastErr = err;
+        const status = err.response?.status;
+        const shouldRetry =
+          status === 429 || (status && status >= 500 && status <= 599);
+        if (!shouldRetry || attempt === RETRY_CONFIG.attempts - 1) {
+          break;
+        }
+        const delay = RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        attempt += 1;
+      }
+    }
+
+    log(
+      COLORS.RED + `[ALPACA] ${label} failed:` + COLORS.RESET,
+      lastErr?.response?.data || lastErr?.message
+    );
+    throw lastErr;
+  }
+
+  async dataRequest(method, path, params = {}) {
+    const url = `${this.dataBaseUrl}${path}`;
+    return await this.requestWithRetry(
+      async () =>
+        await axios({
+          method,
+          url,
+          params,
+          headers: this.getAuthHeaders(),
+        }),
+      `Data ${method} ${path}`
+    );
+  }
+
+  async tradingRequest(method, path, params = {}, data = undefined) {
+    const url = `${this.tradingBaseUrl}${path}`;
+    const res = await axios({
+      method,
+      url,
+      params,
+      data,
+      headers: this.getAuthHeaders(),
+    });
+    return res;
+  }
+
+  async getClock() {
+    const res = await this.tradingRequest("GET", "/v2/clock");
+    return res.data;
+  }
+
+  async isMarketOpen() {
+    const clock = await this.getClock();
+    return Boolean(clock?.is_open);
   }
 
   async fetchTopSymbols(config) {
     try {
-      const res = await axios.get(YAHOO_SCREENER_URL, {
-        params: {
-          formatted: "false",
-          scrIds: "most_actives",
-          count: 200,
-          start: 0,
-        },
-      });
-
-      const quotes =
-        res.data?.finance?.result?.[0]?.quotes?.filter((q) => q.symbol) || [];
-
-      quotes.sort(
-        (a, b) =>
-          (b.regularMarketVolume || 0) - (a.regularMarketVolume || 0)
+      const res = await this.dataRequest(
+        "GET",
+        "/v1beta1/screener/stocks/most-actives"
       );
 
-      const top = quotes.slice(0, config.MAX_SYMBOLS);
-      const symbols = top.map((q) => q.symbol);
+      const raw =
+        res.data?.most_actives ||
+        res.data?.mostActives ||
+        res.data?.data ||
+        res.data?.results ||
+        [];
 
-      log("=== TOP STOCKS (by volume) ===");
-      top.forEach((q, i) => {
-        log(
-          `${i + 1}. ${q.symbol} | volume=${(q.regularMarketVolume || 0).toLocaleString()}`
-        );
+      const candidates = raw.filter((item) => item?.symbol);
+      const skipCounts = { notTradable: 0, otc: 0, halted: 0 };
+      const filtered = candidates.filter((item) => {
+        if (item.is_tradable === false) {
+          skipCounts.notTradable += 1;
+          return false;
+        }
+        if (item.is_otc === true || item.otc === true) {
+          skipCounts.otc += 1;
+          return false;
+        }
+        if (item.is_halted === true || item.halted === true) {
+          skipCounts.halted += 1;
+          return false;
+        }
+        return true;
       });
-      log("===============================");
 
-      return symbols;
+      const maxCandidates = filtered.slice(0, Math.max(config.MAX_SYMBOLS * 4, 50));
+      const symbols = maxCandidates.map((item) => item.symbol);
+      const symbolsWithBars = await this.filterSymbolsWithBars(
+        symbols,
+        config.INTERVAL
+      );
+
+      const topSymbols = symbolsWithBars.slice(0, config.MAX_SYMBOLS);
+      if (skipCounts.notTradable || skipCounts.otc || skipCounts.halted) {
+        log(
+          `[STOCKS] Skipped symbols: notTradable=${skipCounts.notTradable}, otc=${skipCounts.otc}, halted=${skipCounts.halted}`
+        );
+      }
+
+      log("=== TOP STOCKS (Most Actives) ===");
+      topSymbols.forEach((sym, i) => {
+        log(`${i + 1}. ${sym}`);
+      });
+      log("=================================");
+
+      return topSymbols;
     } catch (err) {
       log(
         COLORS.RED + "[STOCKS] Failed to fetch top symbols:" + COLORS.RESET,
@@ -68,77 +184,84 @@ class StockClient {
     }
   }
 
-  async fetchKlines(symbol, interval, limit) {
-    const { interval: chartInterval, range } =
-      INTERVAL_MAP[interval] || INTERVAL_MAP["15m"];
-
-    const res = await axios.get(`${YAHOO_CHART_URL}/${encodeURIComponent(symbol)}`, {
-      params: { interval: chartInterval, range },
+  async filterSymbolsWithBars(symbols, interval) {
+    if (!symbols.length) return [];
+    const timeframe = INTERVAL_MAP[interval] || INTERVAL_MAP["15m"];
+    const res = await this.dataRequest("GET", "/v2/stocks/bars", {
+      symbols: symbols.join(","),
+      timeframe,
+      limit: 1,
+      feed: this.dataFeed,
     });
 
-    const result = res.data?.chart?.result?.[0];
-    const timestamps = result?.timestamp || [];
-    const quote = result?.indicators?.quote?.[0];
+    const bars = res.data?.bars || {};
+    return symbols.filter((symbol) => {
+      const series = bars[symbol] || [];
+      return Array.isArray(series) && series.length > 0;
+    });
+  }
 
-    if (!quote || !timestamps.length) {
-      return [];
-    }
+  async fetchKlines(symbol, interval, limit) {
+    const timeframe = INTERVAL_MAP[interval] || INTERVAL_MAP["15m"];
+    const res = await this.dataRequest("GET", "/v2/stocks/bars", {
+      symbols: symbol,
+      timeframe,
+      limit,
+      feed: this.dataFeed,
+    });
 
-    const candles = timestamps
-      .map((ts, idx) => ({
-        open: quote.open?.[idx],
-        high: quote.high?.[idx],
-        low: quote.low?.[idx],
-        close: quote.close?.[idx],
-        volume: quote.volume?.[idx],
-        ts,
+    const bars = res.data?.bars?.[symbol] || [];
+    return bars
+      .map((bar) => ({
+        open: Number(bar.o),
+        high: Number(bar.h),
+        low: Number(bar.l),
+        close: Number(bar.c),
+        volume: Number(bar.v) || 0,
       }))
-      .filter((c) =>
-        [c.open, c.high, c.low, c.close].every(
-          (value) => typeof value === "number" && !Number.isNaN(value)
+      .filter((candle) =>
+        [candle.open, candle.high, candle.low, candle.close].every((value) =>
+          Number.isFinite(value)
         )
-      )
-      .map((c) => ({
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: typeof c.volume === "number" ? c.volume : 0,
-      }));
-
-    if (candles.length > limit) {
-      return candles.slice(-limit);
-    }
-
-    return candles;
+      );
   }
 
   async fetchLastPrice(symbol) {
-    const res = await axios.get(`${YAHOO_CHART_URL}/${encodeURIComponent(symbol)}`, {
-      params: { interval: "1m", range: "1d" },
+    const res = await this.dataRequest("GET", "/v2/stocks/bars", {
+      symbols: symbol,
+      timeframe: "1Min",
+      limit: 1,
+      feed: this.dataFeed,
     });
-
-    const result = res.data?.chart?.result?.[0];
-    const close = result?.indicators?.quote?.[0]?.close;
-    if (!close || !close.length) {
+    const bars = res.data?.bars?.[symbol] || [];
+    if (!bars.length) {
       throw new Error(`No price for ${symbol}`);
     }
-
-    return close[close.length - 1];
+    const close = Number(bars[bars.length - 1].c);
+    if (!Number.isFinite(close)) {
+      throw new Error(`Invalid price for ${symbol}`);
+    }
+    return close;
   }
 
   async getAccount() {
-    const balances = [
-      { asset: this.quote, free: this.cashBalance, locked: 0 },
-    ];
+    const [accountRes, positionsRes] = await Promise.all([
+      this.tradingRequest("GET", "/v2/account"),
+      this.tradingRequest("GET", "/v2/positions"),
+    ]);
 
-    Object.entries(this.holdings).forEach(([symbol, qty]) => {
+    const cash = parseFloat(accountRes.data?.cash || "0");
+    const balances = [{ asset: this.quote, free: cash, locked: 0 }];
+
+    const positions = Array.isArray(positionsRes.data) ? positionsRes.data : [];
+    positions.forEach((pos) => {
+      const qty = parseFloat(pos.qty || "0");
       if (qty > 0) {
-        balances.push({ asset: symbol, free: qty, locked: 0 });
+        balances.push({ asset: pos.symbol, free: qty, locked: 0 });
       }
     });
 
-    return { balances };
+    return { balances, account: accountRes.data, positions };
   }
 
   findBalance(accountData, asset) {
@@ -151,74 +274,105 @@ class StockClient {
   }
 
   async buyMarket(symbol, quote, quoteOrderFraction) {
-    const freeCash = this.cashBalance;
+    const accountRes = await this.tradingRequest("GET", "/v2/account");
+    const freeCash = parseFloat(accountRes.data?.cash || "0");
 
     if (freeCash <= 0) {
-      log(`[${symbol}] אין ${quote} פנוי (free=${freeCash.toFixed(2)}) – לא קונה`);
-      return null;
-    }
-
-    const quoteQty = freeCash * quoteOrderFraction;
-
-    if (quoteQty < 5) {
       log(
-        COLORS.YELLOW +
-          `[${symbol}] quoteQty=${quoteQty.toFixed(
-            2
-          )} < 5 ${quote} → SKIP (min notional)` +
-          COLORS.RESET
+        `[${symbol}] NO ${quote} BALANCE (free=${freeCash.toFixed(2)}) => SKIP`
       );
       return null;
     }
 
+    const budget = freeCash * quoteOrderFraction;
     const price = await this.fetchLastPrice(symbol);
-    const qty = quoteQty / price;
-    const executedQty = Number(qty.toFixed(4));
-    const totalCost = executedQty * price;
+    const qty = Math.floor(budget / price);
 
-    if (executedQty <= 0 || totalCost > this.cashBalance) {
+    if (qty < 1) {
       log(
         COLORS.YELLOW +
-          `[${symbol}] Calculated qty=${executedQty} exceeds cash ${this.cashBalance.toFixed(
+          `[${symbol}] budget=${budget.toFixed(2)} < 1 share @ ${price.toFixed(
             2
-          )}` +
+          )} => SKIP` +
           COLORS.RESET
       );
       return null;
     }
-
-    this.cashBalance -= totalCost;
-    this.holdings[symbol] = (this.holdings[symbol] || 0) + executedQty;
 
     log(
       COLORS.PURPLE +
-        `→ PAPER BUY ${symbol} qty=${executedQty} (~${totalCost.toFixed(
+        `BUY ${symbol} qty=${qty} (~${(qty * price).toFixed(
           2
-        )} ${quote} @ price=${price.toFixed(4)})` +
+        )} ${quote} @ price=${price.toFixed(2)})` +
         COLORS.RESET
     );
 
-    return { executedQty, avgPrice: price };
+    const res = await this.tradingRequest("POST", "/v2/orders", undefined, {
+      symbol,
+      side: "buy",
+      type: "market",
+      time_in_force: "day",
+      qty: String(qty),
+      client_order_id: `BUY_${symbol}_${Date.now()}`,
+    });
+
+    const executedQty = parseFloat(res.data?.filled_qty || "0") || qty;
+    const avgPrice = parseFloat(res.data?.filled_avg_price || "0") || price;
+
+    log(
+      COLORS.PURPLE + "   BUY ORDER:" + COLORS.RESET,
+      JSON.stringify({
+        symbol,
+        orderId: res.data?.id,
+        executedQty,
+        avgPrice,
+      })
+    );
+
+    return { executedQty, avgPrice };
   }
 
   async sellMarketAll(symbol) {
-    const qty = this.holdings[symbol] || 0;
-    if (qty <= 0) {
-      log(`[${symbol}] NOTHING TO SELL ${symbol}`);
-      return null;
+    try {
+      const res = await this.tradingRequest(
+        "DELETE",
+        `/v2/positions/${encodeURIComponent(symbol)}`
+      );
+
+      const executedQty = parseFloat(res.data?.filled_qty || "0");
+      const avgPrice = parseFloat(res.data?.filled_avg_price || "0");
+
+      log(
+        COLORS.GREEN +
+          `SELL ${symbol} qty=${executedQty || "ALL"}` +
+          COLORS.RESET
+      );
+
+      log(
+        COLORS.GREEN + "   SELL ORDER:" + COLORS.RESET,
+        JSON.stringify({
+          symbol,
+          orderId: res.data?.id,
+          executedQty: executedQty || 0,
+          avgPrice: avgPrice || 0,
+        })
+      );
+
+      return {
+        executedQty: executedQty || 0,
+        avgPrice: avgPrice || 0,
+      };
+    } catch (err) {
+      if (err.response?.status === 404) {
+        log(`[${symbol}] NOTHING TO SELL ${symbol}`);
+        return null;
+      }
+      log(
+        COLORS.RED + `[${symbol}] SELL ERROR:` + COLORS.RESET,
+        err.response?.data || err.message
+      );
+      throw err;
     }
-
-    const price = await this.fetchLastPrice(symbol);
-    const proceeds = qty * price;
-
-    this.cashBalance += proceeds;
-    this.holdings[symbol] = 0;
-
-    log(
-      COLORS.GREEN + `→ PAPER SELL ${symbol} amount ${qty}` + COLORS.RESET
-    );
-
-    return { executedQty: qty, avgPrice: price };
   }
 }
 
