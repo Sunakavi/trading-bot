@@ -731,6 +731,10 @@
             <span id="statusSymbols">—</span>
           </span>
         </div>
+        <div class="row stocks-only" id="stocksAlpacaRow">
+          <span class="label">Alpaca:</span>
+          <span class="value"><span id="statusAlpaca">?</span></span>
+        </div>
         <div class="row stocks-only" id="stocksMarketOpenRow">
           <span class="label">Market Open:</span>
           <span class="value"><span id="stocksMarketOpen">—</span></span>
@@ -949,6 +953,7 @@
       equity: document.getElementById("statusEquity"),
       pnl: document.getElementById("statusPnl"),
       symbols: document.getElementById("statusSymbols"),
+      alpaca: document.getElementById("statusAlpaca"),
       stocksMarketOpen: document.getElementById("stocksMarketOpen"),
       stocksNextOpen: document.getElementById("stocksNextOpen"),
       stocksCountdown: document.getElementById("stocksCountdown"),
@@ -1741,14 +1746,24 @@
         const intervalMs = cfg.config?.loopIntervalMs || cfg.loopIntervalMs;
         statusEls.interval.textContent = intervalMs ? intervalMs / 1000 + " s" : "–";
 
+        const perfEquity = data.performance?.lastEquity;
+        const alpacaEquity = data.alpaca?.equity;
+        const equityValue =
+          currentMarket === "stocks" && alpacaEquity != null
+            ? alpacaEquity
+            : perfEquity;
+
+        if (equityValue != null) {
+          const equity = Number(equityValue);
+          const quoteLabel = currentMarket === "stocks" ? "USD" : "USDT";
+          statusEls.equity.textContent = Number.isFinite(equity)
+            ? equity.toFixed(2) + " " + quoteLabel
+            : "-";
+        } else {
+          statusEls.equity.textContent = "-";
+        }
+
         if (data.performance) {
-          if (data.performance.lastEquity != null) {
-            const equity = Number(data.performance.lastEquity);
-            const quoteLabel = currentMarket === "stocks" ? "USD" : "USDT";
-            statusEls.equity.textContent = equity.toFixed(2) + " " + quoteLabel;
-          } else {
-            statusEls.equity.textContent = "–";
-          }
           statusEls.pnl.textContent = formatPnl(data.performance.lastPnlPct);
         }
 
@@ -1804,6 +1819,25 @@
               ? ""
               : "Bot running - waiting for market open";
           }
+        }
+
+        if (isStocks && statusEls.alpaca) {
+          const alpaca = data.alpaca || {};
+          if (alpaca.connected) {
+            const base = alpaca.baseUrl
+              ? " " + escapeHtml(String(alpaca.baseUrl))
+              : "";
+            statusEls.alpaca.innerHTML =
+              '<span class="badge badge-green">CONNECTED</span>' + base;
+          } else {
+            const err = alpaca.lastError
+              ? " " + escapeHtml(String(alpaca.lastError))
+              : "";
+            statusEls.alpaca.innerHTML =
+              '<span class="badge badge-red">DISCONNECTED</span>' + err;
+          }
+        } else if (statusEls.alpaca) {
+          statusEls.alpaca.textContent = "-";
         }
 
         updateSummaryBar(data.tradeStats || {});

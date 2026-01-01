@@ -601,7 +601,33 @@ async function runMarketLoop(market) {
           context.lastPrices
         );
         freeCash = getFreeCashFromAccount(accountSnapshot, marketConfig.QUOTE);
+
+        const alpacaEquityRaw = Number(accountSnapshot?.account?.equity);
+        const alpacaEquity = Number.isFinite(alpacaEquityRaw)
+          ? alpacaEquityRaw
+          : equity;
+
+        marketShared.alpacaStatus = {
+          connected: true,
+          baseUrl: marketClient.tradingBaseUrl,
+          lastCheckTs: Date.now(),
+          lastError: null,
+          equity: alpacaEquity,
+        };
+
+        logger(
+          `[ALPACA] Connected ${marketClient.tradingBaseUrl} | Equity=${alpacaEquity.toFixed(
+            2
+          )} ${marketConfig.QUOTE}`
+        );
       } catch (err) {
+        marketShared.alpacaStatus = {
+          connected: false,
+          baseUrl: marketClient.tradingBaseUrl,
+          lastCheckTs: Date.now(),
+          lastError: err.response?.data || err.message,
+          equity: null,
+        };
         logger(
           COLORS.YELLOW + "[PORTFOLIO] Account fetch failed:" + COLORS.RESET,
           err.response?.data || err.message

@@ -425,6 +425,14 @@ function startHttpServer(shared = {}) {
           countdownSec: clock.countdownSec ?? null,
           countdown: clock.countdown ?? null,
         };
+        const alpacaStatus = marketShared.alpacaStatus || {};
+        payload.alpaca = {
+          connected: alpacaStatus.connected ?? false,
+          baseUrl: alpacaStatus.baseUrl || config.ALPACA_TRADING_BASE_URL,
+          lastCheckTs: alpacaStatus.lastCheckTs ?? null,
+          lastError: alpacaStatus.lastError ?? null,
+          equity: alpacaStatus.equity ?? null,
+        };
       }
 
       res.json(payload);
