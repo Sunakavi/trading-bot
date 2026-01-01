@@ -162,7 +162,6 @@ function evaluateCoreEntry(candles, preset, logFn = log) {
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
   if (!last || !prev) return false;
-  const prev = candles[candles.length - 2];
 
   const emaFast = calcEMA(closes, preset.emaFast);
   const emaSlow = calcEMA(closes, preset.emaSlow);
