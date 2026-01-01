@@ -343,8 +343,20 @@
       display: flex;
     }
 
+    .stocks-only.card.active {
+      display: block;
+    }
+
     .stocks-only.countdown-note.active {
       display: block;
+    }
+
+    .crypto-only {
+      display: block;
+    }
+
+    body.theme-stocks .crypto-only {
+      display: none;
     }
 
     /* LOG AREA LIKE TERMINAL */
@@ -840,7 +852,7 @@
       </div>
 
         <!-- ENTRY STRATEGY SELECTION -->
-        <div class="row">
+        <div class="row crypto-only">
           <span class="label">Entry Strategy:</span>
           <div>
             <select id="entryStrategySelect" class="num-input" style="width: 260px;">
@@ -848,7 +860,7 @@
             </select>
           </div>
         </div>
-        <div class="status-line" id="strategyStatus">Select an entry strategy to send it live.</div>
+        <div class="status-line crypto-only" id="strategyStatus">Select an entry strategy to send it live.</div>
 
         <!-- INTERVAL -->
         <div class="row" style="margin-top: 8px;">
@@ -891,7 +903,7 @@
     </div>
   </div>
 
-    <div class="card" style="margin-top: 16px;">
+    <div class="card crypto-only" style="margin-top: 16px;">
       <div class="tab-header" role="tablist">
         <button class="tab-button active" data-tab="entry">Entry Strategy Presets</button>
         <button class="tab-button" data-tab="exit">Exit Strategy Presets</button>
@@ -947,6 +959,74 @@
     </div>
   </div>
 
+  <div class="card stocks-only" id="stocksPortfolioCard" style="margin-top: 16px;">
+    <h2>Stocks Portfolio Overview</h2>
+    <div class="strategy-market-label">Stocks-only portfolio presets (IEX)</div>
+    <div class="summary-grid" id="stocksPortfolioSummary">
+      <div class="summary-item">
+        <div class="summary-label">Global Risk</div>
+        <div class="summary-sub" id="stocksGlobalRisk">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Timeframes</div>
+        <div class="summary-sub" id="stocksTimeframes">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Universe Filters</div>
+        <div class="summary-sub" id="stocksUniverseFilters">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Regime Rules</div>
+        <div class="summary-sub" id="stocksRegimeRules">-</div>
+      </div>
+    </div>
+
+    <div class="strategy-table-wrapper" style="margin-top: 12px;">
+      <table class="strategy-table">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Allocation</th>
+            <th>Max Open</th>
+            <th>Risk/Trade</th>
+            <th>Loss Stops</th>
+            <th>Timeframe</th>
+            <th>Entry Preset</th>
+            <th>Exit Preset</th>
+          </tr>
+        </thead>
+        <tbody id="stocksLayersTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="strategy-table-wrapper" style="margin-top: 12px;">
+      <table class="strategy-table">
+        <thead>
+          <tr>
+            <th>Entry Preset</th>
+            <th>Logic</th>
+            <th>Parameters</th>
+          </tr>
+        </thead>
+        <tbody id="stocksEntryPresetsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="strategy-table-wrapper" style="margin-top: 12px;">
+      <table class="strategy-table">
+        <thead>
+          <tr>
+            <th>Exit Preset</th>
+            <th>Stops/Targets</th>
+            <th>Trail/Rules</th>
+          </tr>
+        </thead>
+        <tbody id="stocksExitPresetsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
   <script>
     const statusEls = {
       strategy: document.getElementById("statusStrategy"),
@@ -992,6 +1072,19 @@
     const saveSettingsBtn = document.getElementById("saveSettingsBtn");
     const testAlpacaBtn = document.getElementById("testAlpacaBtn");
     const settingsStatusEl = document.getElementById("settingsStatus");
+
+    const stocksPortfolioEls = {
+      card: document.getElementById("stocksPortfolioCard"),
+      globalRisk: document.getElementById("stocksGlobalRisk"),
+      timeframes: document.getElementById("stocksTimeframes"),
+      universe: document.getElementById("stocksUniverseFilters"),
+      regime: document.getElementById("stocksRegimeRules"),
+      layersBody: document.getElementById("stocksLayersTableBody"),
+      entryBody: document.getElementById("stocksEntryPresetsBody"),
+      exitBody: document.getElementById("stocksExitPresetsBody"),
+    };
+
+    let portfolioSnapshot = null;
 
     const settingsInputs = {
       binanceApiKey: document.getElementById("binanceApiKeyInput"),
@@ -1402,6 +1495,173 @@
       return `${preset.order} — ${preset.name}`;
     }
 
+    function formatPercent(value, digits = 2) {
+      if (value === null || value === undefined) return "-";
+      const num = Number(value);
+      if (Number.isNaN(num)) return "-";
+      return num.toFixed(digits) + "%";
+    }
+
+    function formatAllocation(value) {
+      if (value === null || value === undefined) return "-";
+      const num = Number(value);
+      if (Number.isNaN(num)) return "-";
+      return (num * 100).toFixed(0) + "%";
+    }
+
+    function formatMillions(value) {
+      if (value === null || value === undefined) return "-";
+      const num = Number(value);
+      if (Number.isNaN(num)) return "-";
+      if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+      if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+      return String(num);
+    }
+
+    function renderStocksPortfolio(payload) {
+      if (!stocksPortfolioEls.card) return;
+      const config = payload?.strategyPortfolio;
+      const layers = payload?.layers || config?.layers || [];
+      const rules = payload?.regimeRules || config?.regimeRules || {};
+
+      if (!config) {
+        if (stocksPortfolioEls.globalRisk) stocksPortfolioEls.globalRisk.textContent = "-";
+        if (stocksPortfolioEls.timeframes) stocksPortfolioEls.timeframes.textContent = "-";
+        if (stocksPortfolioEls.universe) stocksPortfolioEls.universe.textContent = "-";
+        if (stocksPortfolioEls.regime) stocksPortfolioEls.regime.textContent = "-";
+        if (stocksPortfolioEls.layersBody) stocksPortfolioEls.layersBody.innerHTML = "";
+        if (stocksPortfolioEls.entryBody) stocksPortfolioEls.entryBody.innerHTML = "";
+        if (stocksPortfolioEls.exitBody) stocksPortfolioEls.exitBody.innerHTML = "";
+        return;
+      }
+
+      const global = config.globalRisk || {};
+      const globalParts = [
+        `Max positions ${global.maxTotalPositions ?? "-"}`,
+        `Max open risk ${formatPercent(global.maxOpenRiskPct, 2)}`,
+        `Daily stop ${formatPercent(global.dailyStopPct, 2)}`,
+      ];
+      if (stocksPortfolioEls.globalRisk) {
+        stocksPortfolioEls.globalRisk.textContent = globalParts.join(" | ");
+      }
+
+      if (stocksPortfolioEls.timeframes) {
+        const tf = Array.isArray(config.timeframesAllowed)
+          ? config.timeframesAllowed.join(", ")
+          : "-";
+        stocksPortfolioEls.timeframes.textContent = tf || "-";
+      }
+
+      const filters = config.universe?.filters || {};
+      const filterParts = [
+        filters.priceMin || filters.priceMax
+          ? `Price $${filters.priceMin ?? "?"}-$${filters.priceMax ?? "?"}`
+          : null,
+        filters.advDollarMin ? `ADV$ >= ${formatMillions(filters.advDollarMin)}` : null,
+        filters.avgShareVolumeMin
+          ? `Avg Vol >= ${formatMillions(filters.avgShareVolumeMin)} sh/day`
+          : null,
+        filters.atrPctMin || filters.atrPctMax
+          ? `ATR% ${filters.atrPctMin ?? "?"}-${filters.atrPctMax ?? "?"}`
+          : null,
+        filters.universeTargetMin || filters.universeTargetMax
+          ? `Universe ${filters.universeTargetMin ?? "?"}-${filters.universeTargetMax ?? "?"}`
+          : null,
+        filters.excludeEtf ? "Exclude ETFs" : null,
+        filters.excludeOtc ? "Exclude OTC" : null,
+        filters.excludePenny ? "Exclude penny" : null,
+      ].filter(Boolean);
+
+      if (stocksPortfolioEls.universe) {
+        stocksPortfolioEls.universe.textContent = filterParts.join(" | ") || "-";
+      }
+
+      if (stocksPortfolioEls.regime) {
+        const parts = Object.keys(rules).map((key) => {
+          const list = Array.isArray(rules[key]) ? rules[key].join(", ") : "-";
+          return `${key}: ${list || "-"}`;
+        });
+        stocksPortfolioEls.regime.textContent = parts.join(" | ") || "-";
+      }
+
+      if (stocksPortfolioEls.layersBody) {
+        const rows = layers.map((layer) => {
+          const lossStops = `D ${formatPercent(layer.lossStopDailyPct, 2)} / W ${formatPercent(layer.lossStopWeeklyPct, 2)}`;
+          return `
+            <tr>
+              <td><strong>${escapeHtml(layer.name || layer.id || "-")}</strong></td>
+              <td>${formatAllocation(layer.allocationPct)}</td>
+              <td>${layer.maxOpenPositions ?? "-"}</td>
+              <td>${formatPercent(layer.maxRiskPerTradePct, 2)}</td>
+              <td>${lossStops}</td>
+              <td>${escapeHtml(layer.timeframe || "-")}</td>
+              <td>${escapeHtml(layer.entryPresetId || "-")}</td>
+              <td>${escapeHtml(layer.exitPresetId || "-")}</td>
+            </tr>
+          `;
+        });
+        stocksPortfolioEls.layersBody.innerHTML = rows.join("") || "";
+      }
+
+      if (stocksPortfolioEls.entryBody) {
+        const entryPresets = config.entryPresets || {};
+        const rows = Object.keys(entryPresets).map((id) => {
+          const preset = entryPresets[id] || {};
+          let logic = "";
+          if (id === "CORE_TREND") {
+            logic = `EMA${preset.emaFast} > EMA${preset.emaSlow}, Close > EMA${preset.emaFast}, ADX${preset.adxPeriod} >= ${preset.adxMin}, RSI ${preset.rsiMin}-${preset.rsiMax}, Pullback to EMA${preset.emaFast}`;
+          } else if (id === "SWING_PULLBACK") {
+            logic = `EMA${preset.emaFast} > EMA${preset.emaSlow}, Pullback ${preset.pullbackMinPct}-${preset.pullbackMaxPct}% below swing high, RSI ${preset.rsiMin}-${preset.rsiMax}, ATR% ${preset.atrPctMin}-${preset.atrPctMax}, Reclaim above EMA${preset.emaFast}`;
+          } else if (id === "AGGR_BREAKOUT") {
+            logic = `Breakout above ${preset.breakoutLookback}-bar high, Volume >= ${preset.volumeMultiplier}x MA${preset.volumeMaPeriod}, RSI ${preset.rsiMin}-${preset.rsiMax}, EMA${preset.emaPeriod} rising or VWAP`;
+          }
+          const params = [
+            preset.emaFast ? `EMA fast ${preset.emaFast}` : null,
+            preset.emaSlow ? `EMA slow ${preset.emaSlow}` : null,
+            preset.emaPeriod ? `EMA ${preset.emaPeriod}` : null,
+            preset.adxPeriod ? `ADX ${preset.adxPeriod}` : null,
+            preset.rsiPeriod ? `RSI ${preset.rsiPeriod}` : null,
+            preset.atrPeriod ? `ATR ${preset.atrPeriod}` : null,
+            preset.breakoutLookback ? `Breakout ${preset.breakoutLookback}` : null,
+            preset.volumeMultiplier ? `Vol x${preset.volumeMultiplier}` : null,
+          ].filter(Boolean).join(" | ");
+          return `
+            <tr>
+              <td><strong>${escapeHtml(preset.name || id)}</strong><br><span class="subtitle" style="margin:0;">${escapeHtml(id)}</span></td>
+              <td>${escapeHtml(logic || "-")}</td>
+              <td>${escapeHtml(params || "-")}</td>
+            </tr>
+          `;
+        });
+        stocksPortfolioEls.entryBody.innerHTML = rows.join("") || "";
+      }
+
+      if (stocksPortfolioEls.exitBody) {
+        const exitPresets = config.exitPresets || {};
+        const rows = Object.keys(exitPresets).map((id) => {
+          const preset = exitPresets[id] || {};
+          const stopParts = [
+            preset.initialAtrMult ? `SL ${preset.initialAtrMult}x ATR${preset.atrPeriod || ""}` : null,
+            preset.takeProfitR ? `TP ${preset.takeProfitR}R` : "TP none",
+          ].filter(Boolean).join(" | ");
+          const trailParts = [
+            preset.trailStartR ? `Trail ${preset.trailStartR}R @ ${preset.trailAtrMult}x ATR` : null,
+            preset.timeStopBars ? `Time stop ${preset.timeStopBars} bars (<${preset.timeStopMinR}R)` : null,
+            preset.trendExitFastEma ? `Trend exit EMA${preset.trendExitFastEma}/EMA${preset.trendExitSlowEma}` : null,
+            preset.invalidationBars ? `Invalidate ${preset.invalidationBars} bars` : null,
+          ].filter(Boolean).join(" | ");
+          return `
+            <tr>
+              <td><strong>${escapeHtml(preset.name || id)}</strong><br><span class="subtitle" style="margin:0;">${escapeHtml(id)}</span></td>
+              <td>${escapeHtml(stopParts || "-")}</td>
+              <td>${escapeHtml(trailParts || "-")}</td>
+            </tr>
+          `;
+        });
+        stocksPortfolioEls.exitBody.innerHTML = rows.join("") || "";
+      }
+    }
+
     function loadExitPresetOverrides() {
       return loadStoredJson(EXIT_PRESET_STORAGE_KEY, {});
     }
@@ -1700,9 +1960,29 @@
       fetchStatus();
       fetchLogs();
       fetchLogFiles();
+      fetchPortfolio();
       statusTimer = setInterval(fetchStatus, 8000);
       logTimer = setInterval(fetchLogs, 5000);
       logListTimer = setInterval(fetchLogFiles, 15000);
+    }
+
+    async function fetchPortfolio() {
+      if (currentMarket !== "stocks") {
+        portfolioSnapshot = null;
+        renderStocksPortfolio(null);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/portfolio?market=${currentMarket}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "portfolio failed");
+        portfolioSnapshot = data;
+        renderStocksPortfolio(data);
+      } catch (err) {
+        if (stocksPortfolioEls.globalRisk) {
+          stocksPortfolioEls.globalRisk.textContent = "Portfolio error: " + err.message;
+        }
+      }
     }
 
     function applyMarketTheme(target) {
@@ -1746,6 +2026,13 @@
       startPolling();
     }
 
+    function updateStocksStrategyStatus(status) {
+      const portfolio = status.portfolio || {};
+      const regime = portfolio.regime || "N/A";
+      const dailyStop = portfolio.dailyStopHit ? " | Daily stop hit" : "";
+      statusEls.strategy.textContent = `Portfolio ${regime}${dailyStop}`;
+    }
+
     // --- STATUS POLLING ---
     async function fetchStatus() {
       try {
@@ -1755,7 +2042,11 @@
 
         const cfg = data;
         setBotRunUi(data.botRunning !== false);
-        updateStrategyUiFromStatus(cfg.activeStrategyId);
+        if (currentMarket === "stocks") {
+          updateStocksStrategyStatus(cfg);
+        } else {
+          updateStrategyUiFromStatus(cfg.activeStrategyId);
+        }
 
         const intervalMs = cfg.config?.loopIntervalMs || cfg.loopIntervalMs;
         statusEls.interval.textContent = intervalMs ? intervalMs / 1000 + " s" : "–";

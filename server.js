@@ -16,6 +16,7 @@ const {
   normalizeSettings,
   DEFAULT_SETTINGS,
 } = require("./settingsManager");
+const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
 
 const MARKET_KEYS = ["crypto", "stocks"];
 const MARKET_LOGGERS = {
@@ -667,6 +668,8 @@ function startHttpServer(shared = {}) {
       portfolio: state.portfolio || {},
       layers: runtimeSettings.PORTFOLIO_LAYERS || [],
       regimeRules: runtimeSettings.REGIME_RULES || {},
+      strategyPortfolio:
+        market === "stocks" ? StrategyPortfolioConfig : null,
     });
   });
 
