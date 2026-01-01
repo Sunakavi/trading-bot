@@ -24,6 +24,12 @@ function initPositions(symbols) {
       entryPrice: 0,
       qty: 0,
       maxPrice: 0,
+      layerId: null,
+      strategyId: null,
+      exitPresetId: null,
+      riskAllocatedUSD: null,
+      openedAt: null,
+      cooldownUntil: null,
     };
   });
   return positions;
@@ -152,11 +158,38 @@ async function runSymbolStrategy(
   candleExitEnabled,
   activeStrategyId,
   market,
-  logFn = log
+  logFn = log,
+  options = {}
 ) {
   try {
     const logger = typeof logFn === "function" ? logFn : log;
     const log = logger;
+    const allowEntries = options.allowEntries !== false;
+    const entryStrategyId =
+      Number(options.strategyId) || Number(activeStrategyId) || 2;
+    const orderFraction =
+      Number(options.orderFraction) > 0
+        ? Number(options.orderFraction)
+        : orderFraction;
+    const exitPresetId = options.exitPresetId || null;
+    const exitConfig =
+      options.exitConfigResolver && options.exitPresetId
+        ? options.exitConfigResolver(options.exitPresetId)
+        : options.exitConfig;
+    const resolvedExitConfig = {
+      SL_PCT: Number(exitConfig?.SL_PCT ?? config.SL_PCT),
+      TP_PCT: Number(exitConfig?.TP_PCT ?? config.TP_PCT),
+      TRAIL_START_PCT: Number(exitConfig?.TRAIL_START_PCT ?? config.TRAIL_START_PCT),
+      TRAIL_DISTANCE_PCT: Number(
+        exitConfig?.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT
+      ),
+      CANDLE_EXIT_ENABLED: Boolean(
+        exitConfig?.CANDLE_EXIT_ENABLED ?? candleExitEnabled
+      ),
+      CANDLE_RED_TRIGGER_PCT: Number(
+        exitConfig?.CANDLE_RED_TRIGGER_PCT ?? candleRedTriggerPct
+      ),
+    };
     // Fetch Klines
     const candles = await marketClient.fetchKlines(
       symbol,
@@ -191,6 +224,12 @@ async function runSymbolStrategy(
       entryPrice: 0,
       qty: 0,
       maxPrice: 0,
+      layerId: null,
+      strategyId: null,
+      exitPresetId: null,
+      riskAllocatedUSD: null,
+      openedAt: null,
+      cooldownUntil: null,
     };
 
     if (killSwitch) {
@@ -209,17 +248,24 @@ async function runSymbolStrategy(
         marketClient,
         config,
         sellSwitch,
-        candleRedTriggerPct,
-        candleExitEnabled,
+        resolvedExitConfig.CANDLE_RED_TRIGGER_PCT,
+        resolvedExitConfig.CANDLE_EXIT_ENABLED,
         market,
-        logger
+        logger,
+        resolvedExitConfig,
+        options
       );
     }
 
-    // 2. ENTRY LOGIC: Select strategy based on activeStrategyId
+    if (!allowEntries) {
+      positions[symbol] = pos;
+      return;
+    }
+
+    // 2. ENTRY LOGIC: Select strategy based on entryStrategyId
     let isEntryConditionMet = false;
     
-    switch (activeStrategyId) {
+    switch (entryStrategyId) {
       case 1:
         isEntryConditionMet = checkEntryGoldenCross(
           closes,
@@ -251,7 +297,7 @@ async function runSymbolStrategy(
         isEntryConditionMet = checkEntryEmaVolume(candles, config, logger);
         break;
       default:
-        log(COLORS.RED + `[${symbol}] Invalid Strategy ID: ${activeStrategyId}` + COLORS.RESET);
+        log(COLORS.RED + `[${symbol}] Invalid Strategy ID: ${entryStrategyId}` + COLORS.RESET);
         return;
     }
     
@@ -259,14 +305,14 @@ async function runSymbolStrategy(
     if (!pos.hasPosition && isEntryConditionMet) {
       log(
         COLORS.GREEN +
-          `[${symbol}] → ENTRY SIGNAL: Strategy ${activeStrategyId} HIT` +
+          `[${symbol}] → ENTRY SIGNAL: Strategy ${entryStrategyId} HIT` +
           COLORS.RESET
       );
 
       const result = await marketClient.buyMarket(
         symbol,
         config.QUOTE,
-        config.QUOTE_ORDER_FRACTION
+        orderFraction
       );
 
       if (result) {
@@ -275,9 +321,15 @@ async function runSymbolStrategy(
         pos.entryPrice = result.avgPrice;
         pos.qty = result.executedQty;
         pos.maxPrice = result.avgPrice; // Initial maxPrice
+        pos.layerId = options.layerId || pos.layerId;
+        pos.strategyId = entryStrategyId;
+        pos.exitPresetId = exitPresetId || pos.exitPresetId;
+        pos.riskAllocatedUSD =
+          options.riskAllocatedUSD ?? pos.riskAllocatedUSD ?? null;
+        pos.openedAt = Date.now();
       }
     } else if (!pos.hasPosition) {
-       log(`[${symbol}] NO POS | Strategy ${activeStrategyId} conditions NOT met.`);
+       log(`[${symbol}] NO POS | Strategy ${entryStrategyId} conditions NOT met.`);
     }
 
     // Final state update
@@ -301,7 +353,9 @@ async function handleExit(
   candleRedTriggerPct,
   candleExitEnabled,
   market,
-  logFn = log
+  logFn = log,
+  exitConfig = null,
+  options = {}
 ) {
   const logger = typeof logFn === "function" ? logFn : log;
   const log = logger;
@@ -314,14 +368,21 @@ async function handleExit(
   }
 
   // 2. Calculate Exit Levels (Shared Logic)
-  const baseSL = entry * (1 - config.SL_PCT);
-  const baseTP = entry * (1 + config.TP_PCT);
+  const slPct = Number(exitConfig?.SL_PCT ?? config.SL_PCT);
+  const tpPct = Number(exitConfig?.TP_PCT ?? config.TP_PCT);
+  const trailStartPct = Number(exitConfig?.TRAIL_START_PCT ?? config.TRAIL_START_PCT);
+  const trailDistancePct = Number(
+    exitConfig?.TRAIL_DISTANCE_PCT ?? config.TRAIL_DISTANCE_PCT
+  );
+
+  const baseSL = entry * (1 - slPct);
+  const baseTP = entry * (1 + tpPct);
 
   let dynSL = baseSL;
 
   // Trailing Stop Logic
-  if (price >= entry * (1 + config.TRAIL_START_PCT)) {
-    const trailSL = pos.maxPrice * (1 - config.TRAIL_DISTANCE_PCT);
+  if (price >= entry * (1 + trailStartPct)) {
+    const trailSL = pos.maxPrice * (1 - trailDistancePct);
     if (trailSL > dynSL) dynSL = trailSL;
   }
   
@@ -377,6 +438,9 @@ if (result) {
         qty,
         pnlValue,
         pnlPct,
+        layerId: pos.layerId || options.layerId || null,
+        strategyId: pos.strategyId || options.strategyId || null,
+        exitPresetId: pos.exitPresetId || options.exitPresetId || null,
       },
       market
     );

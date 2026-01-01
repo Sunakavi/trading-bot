@@ -1,5 +1,5 @@
 // config.js
-const { loadSettings } = require("./settingsManager");
+const { loadSettings, DEFAULT_SETTINGS } = require("./settingsManager");
 
 const COLORS = {
   RESET: "\x1b[0m",
@@ -29,6 +29,8 @@ const defaultSettings = {
   alpacaDataBaseUrl:
     process.env.ALPACA_DATA_BASE_URL || "https://data.alpaca.markets",
   alpacaDataFeed: process.env.ALPACA_DATA_FEED || "iex",
+  PORTFOLIO_LAYERS: DEFAULT_SETTINGS.PORTFOLIO_LAYERS,
+  REGIME_RULES: DEFAULT_SETTINGS.REGIME_RULES,
 };
 
 const { settings: storedSettings, fromFile } = loadSettings();
@@ -95,6 +97,8 @@ const config = {
   KILL_SWITCH: false, // אם true לא נעשה שום טרייד
   LOOP_SLEEP_MS: 15 * 60 * 1000, // 15 minutes
   USE_CANDLE_EXIT,
+  PORTFOLIO_LAYERS: resolvedSettings.PORTFOLIO_LAYERS,
+  REGIME_RULES: resolvedSettings.REGIME_RULES,
 
 };
 

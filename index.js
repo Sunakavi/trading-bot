@@ -19,6 +19,9 @@ const { sleep } = require("./utils");
 const { BinanceClient } = require("./binanceClient");
 const { StockClient } = require("./stockClient");
 const { runSymbolStrategy, initPositions } = require("./strategy");
+const { getTradingPlan } = require("./portfolioManager");
+const { canOpenPosition } = require("./riskEngine");
+const { resolveExitPresetById, normalizeLayerId } = require("./strategyRegistry");
 const { setupKeypressListener } = require("./input");
 const { getStats } = require("./tradeHistory");
 const {
@@ -187,6 +190,56 @@ function formatCountdown(totalSec) {
   const seconds = Math.floor(totalSec % 60);
   const pad = (value) => String(value).padStart(2, "0");
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+const POSITION_DEFAULTS = {
+  hasPosition: false,
+  entryPrice: 0,
+  qty: 0,
+  maxPrice: 0,
+  layerId: null,
+  strategyId: null,
+  exitPresetId: null,
+  riskAllocatedUSD: null,
+  openedAt: null,
+  cooldownUntil: null,
+};
+
+function normalizePositionState(pos) {
+  return { ...POSITION_DEFAULTS, ...(pos || {}) };
+}
+
+function computeEquityFromAccount(accountData, quote, lastPrices = {}) {
+  if (!accountData) return 0;
+  const balances = Array.isArray(accountData.balances) ? accountData.balances : [];
+  const cashBal = balances.find((b) => b.asset === quote);
+  const cash = cashBal ? Number(cashBal.free || 0) + Number(cashBal.locked || 0) : 0;
+
+  const positions = Array.isArray(accountData.positions) ? accountData.positions : [];
+  let positionsValue = 0;
+  positions.forEach((pos) => {
+    const marketValue = Number(pos.market_value || pos.marketValue || 0);
+    if (Number.isFinite(marketValue) && marketValue > 0) {
+      positionsValue += marketValue;
+      return;
+    }
+    const qty = Number(pos.qty || pos.quantity || 0);
+    const currentPrice = Number(pos.current_price || pos.currentPrice || 0);
+    const fallbackPrice = Number(lastPrices[pos.symbol] || 0);
+    const price = Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : fallbackPrice;
+    if (Number.isFinite(qty) && Number.isFinite(price)) {
+      positionsValue += qty * price;
+    }
+  });
+
+  return cash + positionsValue;
+}
+
+function getFreeCashFromAccount(accountData, quote) {
+  if (!accountData) return 0;
+  const balances = Array.isArray(accountData.balances) ? accountData.balances : [];
+  const cashBal = balances.find((b) => b.asset === quote);
+  return cashBal ? Number(cashBal.free || 0) : 0;
 }
 
 function markStopHandled(market) {
@@ -428,7 +481,7 @@ async function runMarketLoop(market) {
       if (keys.length) {
         const nextPositions = initPositions(keys);
         keys.forEach((sym) => {
-          nextPositions[sym] = persisted.positions[sym];
+          nextPositions[sym] = normalizePositionState(persisted.positions[sym]);
         });
         context.positions = nextPositions;
         context.activeSymbols = keys;
@@ -456,6 +509,7 @@ async function runMarketLoop(market) {
           activeStrategyId: runtimeConfig.activeStrategyId,
           runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
           settings: loadSettings().settings,
+          portfolio: context.portfolio?.statePatch?.portfolio,
           lastUpdateTs: Date.now(),
         },
         market
@@ -533,21 +587,215 @@ async function runMarketLoop(market) {
       continue;
     }
 
-    for (const sym of context.activeSymbols) {
-      await runSymbolStrategy(
-        sym,
-        context.positions,
-        context.lastPrices,
-        marketClient,
-        marketConfig,
-        config.KILL_SWITCH,
-        false,
-        runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
-        runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
-        runtimeConfig.activeStrategyId,
+    let portfolioPlan = null;
+    let accountSnapshot = null;
+    let equity = 0;
+    let freeCash = 0;
+
+    if (market === "stocks") {
+      try {
+        accountSnapshot = await marketClient.getAccount();
+        equity = computeEquityFromAccount(
+          accountSnapshot,
+          marketConfig.QUOTE,
+          context.lastPrices
+        );
+        freeCash = getFreeCashFromAccount(accountSnapshot, marketConfig.QUOTE);
+      } catch (err) {
+        logger(
+          COLORS.YELLOW + "[PORTFOLIO] Account fetch failed:" + COLORS.RESET,
+          err.response?.data || err.message
+        );
+      }
+
+      const benchmarkSymbol = context.activeSymbols.includes("SPY")
+        ? "SPY"
+        : context.activeSymbols[0];
+      let regimeCandles = [];
+      if (benchmarkSymbol) {
+        try {
+          regimeCandles = await marketClient.fetchKlines(
+            benchmarkSymbol,
+            marketConfig.INTERVAL,
+            marketConfig.KLINES_LIMIT
+          );
+        } catch (err) {
+          logger(
+            COLORS.YELLOW + "[PORTFOLIO] Regime candles failed:" + COLORS.RESET,
+            err.response?.data || err.message
+          );
+        }
+      }
+
+      const latestState = loadState(market) || {};
+      portfolioPlan = getTradingPlan({
         market,
-        logger
+        equity,
+        positions: context.positions,
+        lastPrices: context.lastPrices,
+        state: latestState,
+        settings: loadSettings().settings,
+        config: marketConfig,
+        candles: regimeCandles,
+        now: Date.now(),
+      });
+      context.portfolio = portfolioPlan;
+    }
+
+    if (market === "stocks" && portfolioPlan) {
+      const enabledLayers = portfolioPlan.enabledLayers || [];
+      const layerConfigsById = portfolioPlan.layerConfigsById || {};
+      const exitPresetMap = portfolioPlan.exitPresetMap || {};
+      const exitConfigResolver = (presetId) =>
+        resolveExitPresetById(exitPresetMap, presetId);
+
+      const globalMaxOpenPositions = Object.values(layerConfigsById).reduce(
+        (sum, layer) => sum + (Number(layer?.maxOpenPositions) || 0),
+        0
       );
+
+      for (const sym of context.activeSymbols) {
+        const pos = normalizePositionState(context.positions[sym]);
+        context.positions[sym] = pos;
+
+        if (pos.hasPosition && !pos.layerId) {
+          const fallbackLayer = enabledLayers[0] || Object.keys(layerConfigsById)[0];
+          pos.layerId = fallbackLayer || "CORE";
+        }
+
+        const posLayerId = normalizeLayerId(pos.layerId);
+        if (pos.hasPosition) {
+          const layerId = posLayerId || enabledLayers[0];
+          const layerConfig = layerConfigsById[layerId];
+          const strategyId = layerConfig
+            ? (portfolioPlan.layerStrategy[layerId] || runtimeConfig.activeStrategyId)
+            : runtimeConfig.activeStrategyId;
+          const exitPreset = portfolioPlan.layerExit[layerId] || {};
+          if (!pos.strategyId) pos.strategyId = strategyId;
+          if (!pos.exitPresetId) pos.exitPresetId = exitPreset.exitPresetId || null;
+          if (!pos.openedAt) pos.openedAt = Date.now();
+
+          await runSymbolStrategy(
+            sym,
+            context.positions,
+            context.lastPrices,
+            marketClient,
+            marketConfig,
+            config.KILL_SWITCH,
+            false,
+            runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+            runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
+            strategyId,
+            market,
+            logger,
+            {
+              allowEntries: false,
+              layerId,
+              strategyId,
+              exitPresetId: pos.exitPresetId || exitPreset.exitPresetId,
+              exitConfig: exitPreset.exitConfig,
+              exitConfigResolver,
+            }
+          );
+          continue;
+        }
+
+        if (!enabledLayers.length) {
+          await runSymbolStrategy(
+            sym,
+            context.positions,
+            context.lastPrices,
+            marketClient,
+            marketConfig,
+            config.KILL_SWITCH,
+            false,
+            runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+            runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
+            runtimeConfig.activeStrategyId,
+            market,
+            logger,
+            { allowEntries: false }
+          );
+          continue;
+        }
+
+        for (const layerId of enabledLayers) {
+          const layerConfig = layerConfigsById[layerId];
+          const layerState = portfolioPlan.layerStates[layerId];
+          const allowance = canOpenPosition({
+            layerId,
+            layerConfig,
+            layerState,
+            positions: context.positions,
+            lastPrices: context.lastPrices,
+            equity,
+            globalMaxOpenPositions,
+          });
+
+          if (!allowance.allowed) {
+            continue;
+          }
+
+          const layerBudget = portfolioPlan.layerBudgets[layerId];
+          const maxRiskUsd =
+            equity *
+            (Number(layerConfig?.allocationPct) || 0) *
+            ((Number(layerConfig?.maxRiskPerTradePct) || 0) / 100);
+          const orderBudget = Math.min(layerBudget?.availableUsd || 0, maxRiskUsd);
+          const orderFraction = freeCash > 0 ? Math.min(1, orderBudget / freeCash) : 0;
+          const exitPreset = portfolioPlan.layerExit[layerId] || {};
+          if (!pos.strategyId) pos.strategyId = strategyId;
+          if (!pos.exitPresetId) pos.exitPresetId = exitPreset.exitPresetId || null;
+          if (!pos.openedAt) pos.openedAt = Date.now();
+          const strategyId = portfolioPlan.layerStrategy[layerId] || runtimeConfig.activeStrategyId;
+
+          await runSymbolStrategy(
+            sym,
+            context.positions,
+            context.lastPrices,
+            marketClient,
+            marketConfig,
+            config.KILL_SWITCH,
+            false,
+            runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+            runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
+            strategyId,
+            market,
+            logger,
+            {
+              allowEntries: orderFraction > 0,
+              orderFraction,
+              layerId,
+              strategyId,
+              exitPresetId: pos.exitPresetId || exitPreset.exitPresetId,
+              exitConfig: exitPreset.exitConfig,
+              exitConfigResolver,
+              riskAllocatedUSD: maxRiskUsd,
+            }
+          );
+
+          if (context.positions[sym]?.hasPosition) {
+            break;
+          }
+        }
+      }
+    } else {
+      for (const sym of context.activeSymbols) {
+        await runSymbolStrategy(
+          sym,
+          context.positions,
+          context.lastPrices,
+          marketClient,
+          marketConfig,
+          config.KILL_SWITCH,
+          false,
+          runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+          runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
+          runtimeConfig.activeStrategyId,
+          market,
+          logger
+        );
+      }
     }
 
     await logPortfolio(market, context);
@@ -558,6 +806,7 @@ async function runMarketLoop(market) {
         activeStrategyId: runtimeConfig.activeStrategyId,
         runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
         settings: loadSettings().settings,
+        portfolio: context.portfolio?.statePatch?.portfolio,
         lastUpdateTs: Date.now(),
       },
       market
@@ -575,5 +824,7 @@ async function runMarketLoop(market) {
 startHttpServer(shared);
 runMarketLoop("crypto");
 runMarketLoop("stocks");
+
+
 
 

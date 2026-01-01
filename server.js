@@ -416,6 +416,7 @@ function startHttpServer(shared = {}) {
       };
 
       if (market === "stocks") {
+        payload.portfolio = state.portfolio || {};
         const clock = marketShared.marketClock || {};
         payload.marketClock = {
           isOpen: clock.isOpen ?? false,
@@ -560,6 +561,41 @@ function startHttpServer(shared = {}) {
       return res.json({ ok: true, settings: runtimeSettings });
     } catch (err) {
       return res.status(500).json({ ok: false, error: "Failed to save settings" });
+    }
+  });
+
+  app.get("/api/portfolio", (req, res) => {
+    const market = resolveMarketFromRequest(req, res);
+    if (!market) return;
+    const state = loadState(market) || {};
+    res.json({
+      ok: true,
+      portfolio: state.portfolio || {},
+      layers: runtimeSettings.PORTFOLIO_LAYERS || [],
+      regimeRules: runtimeSettings.REGIME_RULES || {},
+    });
+  });
+
+  app.patch("/api/portfolio/layers", (req, res) => {
+    const market = resolveMarketFromRequest(req, res);
+    if (!market) return;
+    try {
+      const incoming = req.body || {};
+      const nextSettings = normalizeSettings({
+        ...runtimeSettings,
+        PORTFOLIO_LAYERS:
+          incoming.PORTFOLIO_LAYERS ?? runtimeSettings.PORTFOLIO_LAYERS,
+        REGIME_RULES: incoming.REGIME_RULES ?? runtimeSettings.REGIME_RULES,
+      });
+
+      runtimeSettings = saveSettings(nextSettings);
+      applySettings(runtimeSettings);
+      log("[API] Portfolio layers updated");
+      return res.json({ ok: true, settings: runtimeSettings });
+    } catch (err) {
+      return res
+        .status(500)
+        .json({ ok: false, error: "Failed to update portfolio layers" });
     }
   });
 
