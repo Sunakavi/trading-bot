@@ -21,6 +21,23 @@ const RETRY_CONFIG = {
   baseDelayMs: 500,
 };
 
+function joinBaseUrl(baseUrl, apiPath) {
+  const cleanBase =
+    typeof baseUrl === "string" ? baseUrl.replace(/\/+$/, "") : "";
+  const normalizedPath = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  if (!cleanBase) return normalizedPath;
+
+  const versionMatch = normalizedPath.match(/^\/(v\d+(?:beta\d+)?)\//);
+  if (versionMatch) {
+    const versionSegment = `/${versionMatch[1]}`;
+    if (cleanBase.endsWith(versionSegment)) {
+      return cleanBase + normalizedPath.slice(versionSegment.length);
+    }
+  }
+
+  return cleanBase + normalizedPath;
+}
+
 class StockClient {
   constructor({
     quote = "USD",
@@ -89,7 +106,7 @@ class StockClient {
   }
 
   async dataRequest(method, path, params = {}) {
-    const url = `${this.dataBaseUrl}${path}`;
+    const url = joinBaseUrl(this.dataBaseUrl, path);
     return await this.requestWithRetry(
       async () =>
         await axios({
@@ -103,7 +120,7 @@ class StockClient {
   }
 
   async tradingRequest(method, path, params = {}, data = undefined) {
-    const url = `${this.tradingBaseUrl}${path}`;
+    const url = joinBaseUrl(this.tradingBaseUrl, path);
     const res = await axios({
       method,
       url,
