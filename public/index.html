@@ -1562,6 +1562,7 @@
 
     let cachedSettings = null;
     let currentMode = "MANUAL";
+    let cryptoMode = "MANUAL";
 
     const marketTabsEl = document.getElementById("marketTabs");
     const marketTabButtons = marketTabsEl
@@ -2061,10 +2062,23 @@
       return currentMode === "AUTO";
     }
 
-    function setModeUi(mode) {
+    function setModeControlsEnabled(isCrypto) {
+      modeSwitchButtons.forEach((btn) => {
+        btn.disabled = !isCrypto;
+        btn.title = isCrypto ? "" : "Mode is crypto-only";
+      });
+      if (modeIndicatorEl) {
+        modeIndicatorEl.title = isCrypto ? "" : "Mode is crypto-only";
+      }
+    }
+
+    function setModeUi(mode, options = {}) {
       const next = mode === "AUTO" ? "AUTO" : "MANUAL";
       const changed = currentMode !== next;
       currentMode = next;
+      if (options.syncCrypto !== false && currentMarket === "crypto") {
+        cryptoMode = next;
+      }
       document.body.classList.toggle("mode-auto", next === "AUTO");
       document.body.classList.toggle("mode-manual", next === "MANUAL");
 
@@ -2939,6 +2953,7 @@
       document.body.classList.toggle("theme-crypto", target === "crypto");
       document.body.classList.toggle("theme-stocks", target === "stocks");
       setMarketTypeLock(target);
+      setModeControlsEnabled(target === "crypto");
       if (sellAllBtnEl) {
         sellAllBtnEl.textContent =
           target === "stocks" ? "SELL ALL (Stocks)" : "SELL ALL (Crypto)";
@@ -2972,6 +2987,11 @@
         btn.classList.toggle("active", btn.dataset.market === target)
       );
       applyMarketTheme(target);
+      if (target === "crypto") {
+        setModeUi(cryptoMode, { syncCrypto: true });
+      } else {
+        setModeUi("MANUAL", { syncCrypto: false });
+      }
       stopPolling();
       startPolling();
     }
@@ -2994,8 +3014,12 @@
         setBotRunUi(data.botRunning !== false);
 
         const regimeState = data.regimeState || null;
-        const mode = regimeState?.mode || cachedSettings?.REGIME_ENGINE?.MODE || currentMode;
-        setModeUi(mode);
+        const settingsMode = cachedSettings?.REGIME_ENGINE?.MODE;
+        const resolvedCryptoMode =
+          settingsMode || regimeState?.mode || cryptoMode || currentMode;
+        cryptoMode = resolvedCryptoMode === "AUTO" ? "AUTO" : "MANUAL";
+        const uiMode = currentMarket === "crypto" ? cryptoMode : "MANUAL";
+        setModeUi(uiMode, { syncCrypto: currentMarket === "crypto" });
         if (regimeState) {
           updateRegimeUi(regimeState, data);
         }
@@ -3174,7 +3198,11 @@
         if (!data.ok) throw new Error(data.error || "failed");
         cachedSettings = data.settings || {};
         if (cachedSettings?.REGIME_ENGINE?.MODE) {
-          setModeUi(cachedSettings.REGIME_ENGINE.MODE);
+          cryptoMode =
+            cachedSettings.REGIME_ENGINE.MODE === "AUTO" ? "AUTO" : "MANUAL";
+          if (currentMarket === "crypto") {
+            setModeUi(cryptoMode, { syncCrypto: true });
+          }
         }
       } catch (err) {
         // Allow status polling to drive mode UI if settings load fails.
@@ -3183,6 +3211,10 @@
 
     async function updateModeSetting(nextMode) {
       try {
+        if (currentMarket !== "crypto") {
+          botControlStatusEl.textContent = "Mode is crypto-only.";
+          return;
+        }
         const mode = nextMode === "AUTO" ? "AUTO" : "MANUAL";
         botControlStatusEl.textContent = `Updating mode to ${mode}...`;
         if (!cachedSettings) await loadSettingsCache();
@@ -3204,8 +3236,9 @@
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "failed");
         cachedSettings = data.settings || payload;
+        cryptoMode = mode;
         botControlStatusEl.textContent = `Mode updated to ${mode}.`;
-        setModeUi(mode);
+        setModeUi(mode, { syncCrypto: true });
         await fetchStatus();
       } catch (err) {
         botControlStatusEl.textContent = "Mode update error: " + err.message;
@@ -3222,7 +3255,11 @@
         const settings = data.settings || {};
         cachedSettings = settings;
         if (settings?.REGIME_ENGINE?.MODE) {
-          setModeUi(settings.REGIME_ENGINE.MODE);
+          cryptoMode =
+            settings.REGIME_ENGINE.MODE === "AUTO" ? "AUTO" : "MANUAL";
+          if (currentMarket === "crypto") {
+            setModeUi(cryptoMode, { syncCrypto: true });
+          }
         }
         settingsInputs.binanceApiKey.value = settings.binanceApiKey || "";
         settingsInputs.binanceApiSecret.value = settings.binanceApiSecret || "";
