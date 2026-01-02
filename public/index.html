@@ -3818,7 +3818,7 @@ function renderLegacyExitPresetTable() {
 
     // --- INITIAL LOAD ---
     updateAutoScrollUi();
-    setModeUi(currentMode);
+    setModeUi(currentMode, { syncMarket: false });
     loadSettingsCache();
     setActiveMarket(currentMarket);
   </script>

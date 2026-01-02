@@ -730,6 +730,7 @@ async function runMarketLoop(market) {
           );
         }
       }
+    }
 
     marketShared.interruptNow = false;
 
