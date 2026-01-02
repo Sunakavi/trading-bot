@@ -58,7 +58,7 @@ const StrategyPortfolioConfig = {
       cooldownHoursAfterStop: 6,
       entryPresetId: "CORE_TREND",
       exitPresetId: "CORE_EXIT",
-      timeframe: "4h",
+      timeframe: "15m",
     },
     {
       id: "SWING",
@@ -71,7 +71,7 @@ const StrategyPortfolioConfig = {
       cooldownHoursAfterStop: 6,
       entryPresetId: "SWING_PULLBACK",
       exitPresetId: "SWING_EXIT",
-      timeframe: "1h",
+      timeframe: "15m",
     },
     {
       id: "AGGR",
@@ -91,8 +91,8 @@ const StrategyPortfolioConfig = {
   entryPresets: {
     CORE_TREND: {
       name: "Core Trend",
-      emaFast: 50,
-      emaSlow: 200,
+      emaFast: 20,
+      emaSlow: 50,
       adxPeriod: 14,
       adxMin: 18,
       rsiPeriod: 14,
@@ -102,8 +102,8 @@ const StrategyPortfolioConfig = {
     },
     SWING_PULLBACK: {
       name: "Swing Pullback",
-      emaFast: 20,
-      emaSlow: 100,
+      emaFast: 12,
+      emaSlow: 40,
       rsiPeriod: 14,
       rsiMin: 40,
       rsiMax: 60,
@@ -132,8 +132,8 @@ const StrategyPortfolioConfig = {
       initialAtrMult: 1.8,
       trailStartR: 2.0,
       trailAtrMult: 2.5,
-      trendExitFastEma: 50,
-      trendExitSlowEma: 200,
+      trendExitFastEma: 20,
+      trendExitSlowEma: 50,
       useTakeProfit: false,
     },
     SWING_EXIT: {
