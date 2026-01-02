@@ -32,6 +32,7 @@ const defaultSettings = {
   alpacaDataFeed: process.env.ALPACA_DATA_FEED || "iex",
   PORTFOLIO_LAYERS: DEFAULT_SETTINGS.PORTFOLIO_LAYERS,
   REGIME_RULES: DEFAULT_SETTINGS.REGIME_RULES,
+  REGIME_ENGINE: DEFAULT_SETTINGS.REGIME_ENGINE,
 };
 
 const { settings: storedSettings, fromFile } = loadSettings();
@@ -100,6 +101,7 @@ const config = {
   USE_CANDLE_EXIT,
   PORTFOLIO_LAYERS: resolvedSettings.PORTFOLIO_LAYERS,
   REGIME_RULES: resolvedSettings.REGIME_RULES,
+  REGIME_ENGINE: resolvedSettings.REGIME_ENGINE,
   STRATEGY_PORTFOLIO: StrategyPortfolioConfig,
 
 };

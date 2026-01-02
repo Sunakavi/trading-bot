@@ -32,6 +32,15 @@ const { MarketSessionGate } = require("./session/marketSessionGate");
 const { setupKeypressListener } = require("./input");
 const { getStats } = require("./tradeHistory");
 const {
+  detectMarketRegime,
+  applyRegimeLock,
+  buildRegimeSettings,
+} = require("./marketRegimeEngine");
+const {
+  resolveExitPresetConfig,
+  getExitPresetById,
+} = require("./exitPresetRegistry");
+const {
   loadState,
   saveState,
   loadPerformance,
@@ -207,6 +216,21 @@ function formatCountdown(totalSec) {
   const pad = (value) => String(value).padStart(2, "0");
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
+
+function formatRegimeNumber(value, digits = 2) {
+  return Number.isFinite(value) ? value.toFixed(digits) : "n/a";
+}
+
+function formatRegimePercent(value, digits = 2) {
+  return Number.isFinite(value) ? `${value.toFixed(digits)}%` : "n/a";
+}
+
+function describeExitPreset(exitPresetId) {
+  const preset = getExitPresetById(exitPresetId);
+  if (!preset) return exitPresetId != null ? String(exitPresetId) : "n/a";
+  return `${preset.id} (${preset.name})`;
+}
+
 
 const POSITION_DEFAULTS = {
   hasPosition: false,
@@ -625,6 +649,120 @@ async function runMarketLoop(market) {
       continue;
     }
 
+    let entryStrategyId = runtimeConfig.activeStrategyId;
+    let selectedExitPresetId = null;
+    let allowEntriesByRegime = true;
+    let exitConfigResolver = null;
+
+    if (market === "crypto") {
+      const settingsSnapshot = loadSettings().settings;
+      const regimeSettings =
+        settingsSnapshot?.REGIME_ENGINE || config.REGIME_ENGINE || {};
+      const regimeConfig = buildRegimeSettings(regimeSettings);
+      let proxyCandles = [];
+      try {
+        proxyCandles = await dataProvider.fetchKlines(
+          regimeConfig.REGIME_PROXY_SYMBOL,
+          regimeConfig.TIMEFRAME,
+          marketConfig.KLINES_LIMIT
+        );
+      } catch (err) {
+        logger(
+          COLORS.YELLOW + "[REGIME] Proxy candles failed:" + COLORS.RESET,
+          err.response?.data || err.message
+        );
+      }
+
+      const detection = detectMarketRegime(proxyCandles, regimeConfig);
+      const lock = applyRegimeLock(
+        marketShared.regimeState || {},
+        detection,
+        detection.config
+      );
+
+      marketShared.regimeState = {
+        currentRegime: lock.currentRegime,
+        holdCount: lock.holdCount,
+        detectedRegime: detection.regime,
+        confidence: detection.confidence,
+        updatedAt: Date.now(),
+      };
+
+      const appliedRegime = lock.currentRegime;
+      const mode = detection.config.MODE;
+      const pack = detection.config.STRATEGY_PACKS?.[appliedRegime] || null;
+      let blockReason = null;
+
+      if (mode === "AUTO") {
+        if (appliedRegime === "NO_TRADE") {
+          allowEntriesByRegime = false;
+          blockReason = detection.reason || "no trade";
+        } else if (pack) {
+          entryStrategyId = pack.entryStrategyId;
+          selectedExitPresetId = pack.exitPresetId;
+        } else {
+          allowEntriesByRegime = false;
+          blockReason = "strategy pack missing";
+        }
+
+        runtimeConfig.activeStrategyId = entryStrategyId;
+        marketShared.activeStrategyId = entryStrategyId;
+      }
+
+      const baseExitConfig = {
+        SL_PCT: runtimeConfig.SL_PCT ?? marketConfig.SL_PCT,
+        TP_PCT: runtimeConfig.TP_PCT ?? marketConfig.TP_PCT,
+        TRAIL_START_PCT:
+          runtimeConfig.TRAIL_START_PCT ?? marketConfig.TRAIL_START_PCT,
+        TRAIL_DISTANCE_PCT:
+          runtimeConfig.TRAIL_DISTANCE_PCT ?? marketConfig.TRAIL_DISTANCE_PCT,
+        CANDLE_EXIT_ENABLED:
+          runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
+        CANDLE_RED_TRIGGER_PCT:
+          runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
+      };
+      exitConfigResolver = (presetId) =>
+        resolveExitPresetConfig(presetId, baseExitConfig);
+
+      const metrics = detection.metrics || {};
+      const confidence = Number.isFinite(detection.confidence)
+        ? detection.confidence.toFixed(2)
+        : "n/a";
+      const holdNote = `${lock.holdCount}/${detection.config.REGIME_MIN_HOLD_CANDLES}`;
+      const reasonNote =
+        detection.reason && detection.reason !== "matched"
+          ? ` reason=${detection.reason}`
+          : "";
+
+      logger(
+        `[REGIME] detected=${detection.regime} applied=${appliedRegime} confidence=${confidence} lock=${lock.lockStatus} hold=${holdNote}${reasonNote}`
+      );
+      logger(
+        `[REGIME] metrics ATR_ratio=${formatRegimeNumber(
+          metrics.atrRatio
+        )} VOL_ratio=${formatRegimeNumber(
+          metrics.volumeRatio
+        )} slope=${formatRegimePercent(metrics.slopePct, 3)} RSI=${formatRegimeNumber(
+          metrics.rsi,
+          0
+        )}`
+      );
+
+      if (mode === "AUTO") {
+        logger(
+          `[REGIME] mode=AUTO entry=${entryStrategyId} exit=${describeExitPreset(
+            selectedExitPresetId
+          )}`
+        );
+      } else {
+        logger(`[REGIME] mode=MANUAL entry=${entryStrategyId} exit=MANUAL`);
+      }
+
+      if (!allowEntriesByRegime) {
+        logger(`[REGIME] TRADE BLOCKED - ${blockReason || "NO_TRADE"}`);
+      }
+    }
+
     let portfolioPlan = null;
     let accountSnapshot = null;
     let equity = 0;
@@ -866,6 +1004,12 @@ async function runMarketLoop(market) {
       }
     } else {
       for (const sym of context.activeSymbols) {
+        const pos = normalizePositionState(context.positions[sym]);
+        context.positions[sym] = pos;
+        const effectiveExitPresetId = pos.hasPosition
+          ? pos.exitPresetId || null
+          : selectedExitPresetId;
+
         await runSymbolStrategy(
           sym,
           context.positions,
@@ -877,9 +1021,15 @@ async function runMarketLoop(market) {
           false,
           runtimeConfig.CANDLE_RED_TRIGGER_PCT ?? CANDLE_RED_TRIGGER_PCT,
           runtimeConfig.CANDLE_EXIT_ENABLED ?? marketConfig.USE_CANDLE_EXIT,
-          runtimeConfig.activeStrategyId,
+          entryStrategyId,
           market,
-          logger
+          logger,
+          {
+            allowEntries: allowEntriesByRegime && marketOpen,
+            strategyId: entryStrategyId,
+            exitPresetId: effectiveExitPresetId,
+            exitConfigResolver: exitConfigResolver || undefined,
+          }
         );
       }
     }
