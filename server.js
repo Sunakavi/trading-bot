@@ -44,6 +44,35 @@ function formatApiError(err) {
     return String(raw);
   }
 }
+function formatCountdown(totalSec) {
+  if (!Number.isFinite(totalSec)) return "--:--:--";
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = Math.floor(totalSec % 60);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+function buildMarketClock(clock) {
+  const nextOpenRaw = clock?.next_open || clock?.nextOpen;
+  const nextCloseRaw = clock?.next_close || clock?.nextClose;
+  const nextOpen = nextOpenRaw ? Date.parse(nextOpenRaw) : NaN;
+  const nextClose = nextCloseRaw ? Date.parse(nextCloseRaw) : NaN;
+  const now = Date.now();
+  const countdownSec = Number.isFinite(nextOpen)
+    ? Math.max(0, Math.floor((nextOpen - now) / 1000))
+    : null;
+
+  return {
+    isOpen: !!(clock?.is_open ?? clock?.isOpen),
+    nextOpen: nextOpenRaw || null,
+    nextClose: nextCloseRaw || null,
+    countdownSec,
+    countdown: countdownSec != null ? formatCountdown(countdownSec) : null,
+  };
+}
+
+
 
 // קונפיג חי – נשלט דרך /api/config
 const runtimeConfigCrypto = {
@@ -384,7 +413,7 @@ function startHttpServer(shared = {}) {
   }
 
   // ===== API: STATUS =====
-  app.get("/api/status", (req, res) => {
+  app.get("/api/status", async (req, res) => {
     try {
       const market = resolveMarketFromRequest(req, res);
       if (!market) return;
@@ -437,6 +466,25 @@ function startHttpServer(shared = {}) {
 
       if (market === "stocks") {
         payload.portfolio = state.portfolio || {};
+        const nowTs = Date.now();
+        const clockStale = !marketShared.marketClock ||
+          (!marketShared.marketClock.nextOpen && !marketShared.marketClock.nextClose);
+        const lastAttempt = marketShared.marketClockAttemptTs || 0;
+        if (clockStale && nowTs - lastAttempt > 60000) {
+          marketShared.marketClockAttemptTs = nowTs;
+          try {
+            const marketClient = shared.marketClients?.stocks;
+            if (marketClient?.getClock) {
+              const rawClock = await marketClient.getClock();
+              marketShared.marketClock = buildMarketClock(rawClock);
+              marketShared.marketClockTs = Date.now();
+              marketShared.marketClockError = null;
+            }
+          } catch (err) {
+            marketShared.marketClockError = formatApiError(err);
+          }
+        }
+
         const clock = marketShared.marketClock || {};
         payload.marketClock = {
           isOpen: clock.isOpen ?? false,
