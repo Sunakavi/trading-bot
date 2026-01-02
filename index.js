@@ -590,6 +590,8 @@ async function runMarketLoop(market) {
   const runtimeConfig = market === "stocks" ? runtimeConfigStocks : runtimeConfigCrypto;
   const marketConfig = marketConfigs[market];
   const marketShared = shared.markets[market];
+  const resolveActiveMarket = () =>
+    config.MARKET_TYPE === "stocks" ? "stocks" : "crypto";
 
   const context = {
     market,
@@ -639,6 +641,12 @@ async function runMarketLoop(market) {
   while (true) {
     marketShared.activeStrategyId = runtimeConfig.activeStrategyId;
     marketShared.openPositions = countOpenPositions(context.positions);
+
+    if (resolveActiveMarket() !== market) {
+      marketShared.interruptNow = false;
+      await sleep(1000);
+      continue;
+    }
 
     if (shared.stopRequested) {
       logger(
@@ -1159,12 +1167,8 @@ async function runMarketLoop(market) {
 // START HTTP + BOT
 // =======================
 startHttpServer(shared);
-if (config.MARKET_TYPE === "crypto") {
-  runMarketLoop("crypto");
-}
-if (config.MARKET_TYPE === "stocks") {
-  runMarketLoop("stocks");
-}
+runMarketLoop("crypto");
+runMarketLoop("stocks");
 
 
 
