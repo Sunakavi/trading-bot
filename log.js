@@ -3,14 +3,16 @@
 const fs = require("fs");
 const path = require("path");
 const { COLORS } = require("./config");
+const { ensureDataDir, resolveDataPath } = require("./dataDir");
 
-const LOG_DIR = "./logs";
+const LOG_DIR = resolveDataPath("logs");
 const MARKET_PREFIX = {
   crypto: "crypto",
   stocks: "stocks",
 };
 
 function initLogSystem() {
+  ensureDataDir();
   if (!fs.existsSync(LOG_DIR)) {
     fs.mkdirSync(LOG_DIR, { recursive: true });
   }
@@ -25,6 +27,9 @@ function getLogFilePath(market = "crypto") {
 function writeLine(line, market = "crypto") {
   // Use try/catch for file operations for safety
   try {
+    if (!fs.existsSync(LOG_DIR)) {
+      initLogSystem();
+    }
     fs.appendFileSync(getLogFilePath(market), line + "\n", "utf8");
   } catch (e) {
     console.error(COLORS.RED + "[LOG WRITE ERROR]" + COLORS.RESET, e.message);

@@ -17,6 +17,7 @@ const {
   DEFAULT_SETTINGS,
 } = require("./settingsManager");
 const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
+const { resolveDataPath } = require("./dataDir");
 
 const MARKET_KEYS = ["crypto", "stocks"];
 const MARKET_LOGGERS = {
@@ -171,7 +172,7 @@ function getRuntimeConfigByMarket(market) {
 
 
 
-const LOG_DIR = path.join(__dirname, "logs");
+const LOG_DIR = resolveDataPath("logs");
 
 function listLogFiles(market) {
   const key = normalizeMarket(market);
