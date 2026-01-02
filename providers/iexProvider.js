@@ -69,6 +69,12 @@ class IexProvider extends MarketDataProvider {
       (await this.dataClient.fetchTopSymbols?.(this.config)) ||
       [];
 
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      this.logger?.("[STOCKS] Universe list candidates empty");
+    } else {
+      this.logger?.("[STOCKS] Universe list candidates=" + candidates.length);
+    }
+
     let splitSymbols = [];
     if (typeof this.dataClient.fetchSplits === "function") {
       splitSymbols = await this.dataClient.fetchSplits(candidates);
@@ -82,6 +88,8 @@ class IexProvider extends MarketDataProvider {
       normalized.filter((sym) => !splitSet.has(String(sym).toUpperCase())),
       filters
     );
+
+    this.logger?.("[STOCKS] Universe filters result=" + (filtered?.length || 0));
 
     if (!filtered.length && fallbackSymbols.length) {
       const fallback = fallbackSymbols
