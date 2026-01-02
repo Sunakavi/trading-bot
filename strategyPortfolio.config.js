@@ -5,6 +5,18 @@ const StrategyPortfolioConfig = {
   market: "stocks",
   universe: {
     source: "iex",
+    fallbackSymbols: [
+      "SPY",
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "AMZN",
+      "META",
+      "TSLA",
+      "GOOGL",
+      "AMD",
+      "NFLX",
+    ],
     filters: {
       priceMin: 5,
       priceMax: 500,

@@ -3127,6 +3127,30 @@ function renderLegacyExitPresetTable() {
       statusEls.strategy.textContent = `Portfolio ${regime}${dailyStop}`;
     }
 
+    function updateStocksRegimeUi(status) {
+      const portfolio = status.portfolio || {};
+      const regime = portfolio.regime || "OFF";
+      if (autoStrategyEls.regime) autoStrategyEls.regime.textContent = regime;
+      if (autoStrategyEls.status) autoStrategyEls.status.textContent = "Stocks portfolio";
+      if (autoStrategyEls.reason) autoStrategyEls.reason.textContent = "";
+      if (entryTabAutoEls.regime) entryTabAutoEls.regime.textContent = regime;
+      if (entryTabAutoEls.explanation) entryTabAutoEls.explanation.textContent = "";
+      if (regimeEls.current) setRegimeBadge(regimeEls.current, regime);
+      if (regimeEls.detected) regimeEls.detected.textContent = "-";
+      if (regimeEls.confidence) regimeEls.confidence.textContent = "-";
+      if (regimeEls.status) regimeEls.status.textContent = "-";
+      if (regimeEls.reason) regimeEls.reason.textContent = "";
+      if (regimeEls.proxySymbol) regimeEls.proxySymbol.textContent = "-";
+      if (regimeEls.timeframe) regimeEls.timeframe.textContent = "-";
+      if (regimeEls.lastScan) regimeEls.lastScan.textContent = "-";
+      if (regimeEls.slope) regimeEls.slope.textContent = "-";
+      if (regimeEls.rsi) regimeEls.rsi.textContent = "-";
+      if (regimeEls.atrRatio) regimeEls.atrRatio.textContent = "-";
+      if (regimeEls.volumeRatio) regimeEls.volumeRatio.textContent = "-";
+      if (regimeEls.noTradeBanner) regimeEls.noTradeBanner.style.display = "none";
+      if (regimeEls.noTradeReason) regimeEls.noTradeReason.textContent = "";
+    }
+
     // --- STATUS POLLING ---
     async function fetchStatus() {
       try {
@@ -3150,12 +3174,13 @@ function renderLegacyExitPresetTable() {
             syncMarket: false,
           });
         }
-        if (regimeState) {
-          updateRegimeUi(regimeState, data);
-        }
         if (currentMarket === "stocks") {
           updateStocksStrategyStatus(cfg);
+          updateStocksRegimeUi(cfg);
         } else {
+          if (regimeState) {
+            updateRegimeUi(regimeState, data);
+          }
           updateStrategyUiFromStatus(cfg.activeStrategyId);
         }
 

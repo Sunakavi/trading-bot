@@ -704,22 +704,32 @@ async function runMarketLoop(market) {
 
       const today = new Date().toISOString().slice(0, 10);
       if (context.lastUniverseRefresh !== today) {
-        const refreshed = await dataProvider.listUniverse();
-        if (Array.isArray(refreshed) && refreshed.length > 0) {
-          const openPositions = Object.entries(context.positions)
-            .filter(([, pos]) => pos?.hasPosition)
-            .map(([sym]) => sym);
-          const merged = Array.from(new Set([...refreshed, ...openPositions]));
-          const nextPositions = initPositions(merged);
-          merged.forEach((sym) => {
-            if (context.positions[sym]) nextPositions[sym] = context.positions[sym];
-          });
-          context.activeSymbols = merged;
-          context.positions = nextPositions;
+        try {
+          const refreshed = await dataProvider.listUniverse();
+          if (Array.isArray(refreshed) && refreshed.length > 0) {
+            const openPositions = Object.entries(context.positions)
+              .filter(([, pos]) => pos?.hasPosition)
+              .map(([sym]) => sym);
+            const merged = Array.from(new Set([...refreshed, ...openPositions]));
+            const nextPositions = initPositions(merged);
+            merged.forEach((sym) => {
+              if (context.positions[sym]) nextPositions[sym] = context.positions[sym];
+            });
+            context.activeSymbols = merged;
+            context.positions = nextPositions;
+            context.lastUniverseRefresh = today;
+          } else {
+            logger(
+              COLORS.YELLOW + "[STOCKS] Universe refresh returned 0 symbols" + COLORS.RESET
+            );
+          }
+        } catch (err) {
+          logger(
+            COLORS.YELLOW + "[STOCKS] Universe refresh failed:" + COLORS.RESET,
+            err.response?.data || err.message
+          );
         }
-        context.lastUniverseRefresh = today;
       }
-    }
 
     marketShared.interruptNow = false;
 
