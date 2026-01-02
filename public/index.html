@@ -783,6 +783,133 @@
       margin-bottom: 10px;
       letter-spacing: 0.02em;
     }
+
+
+    .mode-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .mode-pill.auto {
+      background: #064e3b;
+      color: #a7f3d0;
+      border-color: #10b981;
+    }
+
+    .mode-pill.manual {
+      background: #1e293b;
+      color: #bfdbfe;
+      border-color: #2563eb;
+    }
+
+    .mode-switch {
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    .mode-switch .btn.active {
+      background: #0f172a;
+      border-color: #38bdf8;
+      color: #e2e8f0;
+    }
+
+    .mode-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .auto-only {
+      display: none;
+    }
+
+    .manual-only {
+      display: block;
+    }
+
+    body.mode-auto .auto-only {
+      display: block;
+    }
+
+    body.mode-auto .manual-only {
+      display: none;
+    }
+
+    body.mode-manual .auto-only {
+      display: none;
+    }
+
+    body.mode-manual .manual-only {
+      display: block;
+    }
+
+    .regime-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .regime-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .regime-metric {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+
+    .regime-metric strong {
+      color: #f9fafb;
+      font-size: 13px;
+    }
+
+    .no-trade-banner {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: rgba(127, 29, 29, 0.25);
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      color: #fecaca;
+      font-size: 12px;
+    }
+
+    .no-trade-banner strong {
+      color: #fef2f2;
+    }
+
+    .auto-strategy-block {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 10px 0 6px;
+    }
+
+    .auto-note {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 6px;
+    }
+
+    .auto-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
   </style>
 </head>
 <body class="theme-crypto">
@@ -808,6 +935,13 @@
           <span id="botRunBadge" class="pill pill-green">Running</span>
           <button id="startBotBtn" class="btn btn-primary btn-small">START BOT</button>
           <button id="stopBotBtn" class="btn btn-danger btn-small">STOP BOT</button>
+        </div>
+        <div class="control-actions-row">
+          <span id="modeIndicator" class="mode-pill manual">MODE: --</span>
+          <div id="modeSwitch" class="mode-switch">
+            <button class="btn btn-outline btn-small" data-mode="AUTO">AUTO</button>
+            <button class="btn btn-outline btn-small" data-mode="MANUAL">MANUAL</button>
+          </div>
         </div>
         <button id="settingsToggleBtn" class="btn btn-outline btn-small">SETTINGS</button>
       </div>
@@ -921,6 +1055,53 @@
       </div>
     </div>
 
+
+    <div class="card crypto-only" id="regimeCard">
+      <h2>Market Scan & Regime</h2>
+      <div class="regime-grid">
+        <div class="summary-item">
+          <div class="summary-label">Scan Source</div>
+          <div class="summary-value" id="regimeProxySymbol">-</div>
+          <div class="summary-sub">Timeframe: <span id="regimeTimeframe">-</span></div>
+          <div class="summary-sub">Last scan: <span id="regimeLastScan">-</span></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Market Regime</div>
+          <div class="summary-value" id="regimeCurrent">-</div>
+          <div class="summary-sub">Detected: <span id="regimeDetected">-</span></div>
+          <div class="summary-sub">Confidence: <span id="regimeConfidence">-</span></div>
+          <div class="summary-sub">Status: <span id="regimeStatus">-</span></div>
+          <div class="summary-sub" id="regimeReason"></div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Supporting Metrics</div>
+          <div class="regime-metrics">
+            <div class="regime-metric">
+              <span>MA slope</span>
+              <strong id="regimeSlope">-</strong>
+            </div>
+            <div class="regime-metric">
+              <span>RSI</span>
+              <strong id="regimeRsi">-</strong>
+            </div>
+            <div class="regime-metric">
+              <span>ATR ratio</span>
+              <strong id="regimeAtrRatio">-</strong>
+            </div>
+            <div class="regime-metric">
+              <span>Volume ratio</span>
+              <strong id="regimeVolumeRatio">-</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="no-trade-banner" id="noTradeBanner" style="display: none;">
+        <strong>NO TRADE.</strong> <span id="noTradeReason">-</span>
+        <div>No new entries will be taken. Existing positions are still managed.</div>
+      </div>
+    </div>
+
+
     <div class="grid">
       <!-- LEFT: STATUS + CONTROLS -->
       <div class="card">
@@ -1003,7 +1184,19 @@
 
         <hr style="border: none; border-top: 1px solid #374151; margin: 10px 0;" />
 
-        <div class="row">
+        <div class="auto-only auto-strategy-block">
+          <div class="row">
+            <span class="label">Active Exit:</span>
+            <span class="value"><span id="exitAutoPreset">-</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Source:</span>
+            <span class="value"><span id="exitAutoSource">-</span></span>
+          </div>
+          <div class="auto-note">Switch to MANUAL mode to override exits.</div>
+        </div>
+
+        <div class="row manual-only">
           <span class="label">Preset sets:</span>
           <div>
             <select id="exitPresetSelect" class="num-input" style="width: 240px;">
@@ -1016,21 +1209,21 @@
         </div>
 
         <!-- עריכה דינמית -->
-        <div class="row">
+        <div class="row manual-only">
           <span class="label">Edit (%):</span>
           <div>
             <input id="exitSlInput" class="num-input" type="number" step="0.1" min="0.1" max="50" placeholder="SL" />
             <input id="exitTpInput" class="num-input" type="number" step="0.1" min="0.1" max="100" placeholder="TP" />
           </div>
         </div>
-        <div class="row">
+        <div class="row manual-only">
           <span class="label"></span>
           <div>
             <input id="exitTrailStartInput" class="num-input" type="number" step="0.1" min="0.1" max="100" placeholder="Trail Start" />
             <input id="exitTrailDistanceInput" class="num-input" type="number" step="0.1" min="0.1" max="100" placeholder="Trail Dist." />
           </div>
         </div>
-        <div class="row">
+        <div class="row manual-only">
           <span class="label">Candle (%):</span>
           <div>
             <label style="display: flex; align-items: center; gap: 8px;">
@@ -1050,7 +1243,7 @@
           </div>
         </div>
 
-        <div class="row" style="margin-top: 8px;">
+        <div class="row manual-only" style="margin-top: 8px;">
           <span class="label"></span>
           <div>
             <button class="btn btn-primary btn-small" onclick="updateExitConfig()">
@@ -1059,11 +1252,30 @@
           </div>
         </div>
 
-        <div class="status-line" id="exitStatus"></div>
+        <div class="status-line manual-only" id="exitStatus"></div>
       </div>
 
         <!-- ENTRY STRATEGY SELECTION -->
-        <div class="row crypto-only">
+        <div class="auto-only auto-strategy-block crypto-only" id="autoStrategyBlock">
+          <div class="row">
+            <span class="label">Regime:</span>
+            <span class="value"><span id="autoStrategyRegime">-</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Entry:</span>
+            <span class="value"><span id="autoEntryStrategy">-</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Exit:</span>
+            <span class="value"><span id="autoExitStrategy">-</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Status:</span>
+            <span class="value"><span id="autoStrategyStatus">-</span></span>
+          </div>
+          <div class="status-line" id="autoStrategyReason"></div>
+        </div>
+        <div class="row crypto-only manual-only">
           <span class="label">Entry Strategy:</span>
           <div>
             <select id="entryStrategySelect" class="num-input" style="width: 260px;">
@@ -1071,7 +1283,7 @@
             </select>
           </div>
         </div>
-        <div class="status-line crypto-only" id="strategyStatus">Select an entry strategy to send it live.</div>
+        <div class="status-line crypto-only manual-only" id="strategyStatus">Select an entry strategy to send it live.</div>
 
         <!-- INTERVAL -->
         <div class="row" style="margin-top: 8px;">
@@ -1161,6 +1373,20 @@
       <div id="entryStrategyTab" class="tab-panel active">
         <h2>Entry Strategy Presets</h2>
         <div class="strategy-market-label" id="entryStrategyMarketLabel">Entry Strategy Presets - Crypto</div>
+        <div class="auto-only auto-strategy-block" id="autoEntryTabSummary">
+          <div class="row">
+            <span class="label">Detected Regime:</span>
+            <span class="value"><span id="entryTabRegime">-</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Selected Entry:</span>
+            <span class="value"><span id="entryTabStrategy">-</span></span>
+          </div>
+          <div class="row">
+            <span class="label">Explanation:</span>
+            <span class="value"><span id="entryTabExplanation">-</span></span>
+          </div>
+        </div>
         <p class="subtitle" style="margin-bottom: 12px;">
           These presets adjust trend, pullback, momentum, ATR, and volume filters. Selecting one updates the bot
           immediately for the next trading loop.
@@ -1290,6 +1516,52 @@
       stocksCountdownNote: document.getElementById("stocksCountdownNote"),
       updated: document.getElementById("statusUpdated"),
     };
+
+    const modeIndicatorEl = document.getElementById("modeIndicator");
+    const modeSwitchEl = document.getElementById("modeSwitch");
+    const modeSwitchButtons = modeSwitchEl
+      ? Array.from(modeSwitchEl.querySelectorAll("button[data-mode]"))
+      : [];
+
+    const regimeEls = {
+      proxySymbol: document.getElementById("regimeProxySymbol"),
+      timeframe: document.getElementById("regimeTimeframe"),
+      lastScan: document.getElementById("regimeLastScan"),
+      current: document.getElementById("regimeCurrent"),
+      detected: document.getElementById("regimeDetected"),
+      confidence: document.getElementById("regimeConfidence"),
+      status: document.getElementById("regimeStatus"),
+      reason: document.getElementById("regimeReason"),
+      slope: document.getElementById("regimeSlope"),
+      rsi: document.getElementById("regimeRsi"),
+      atrRatio: document.getElementById("regimeAtrRatio"),
+      volumeRatio: document.getElementById("regimeVolumeRatio"),
+      noTradeBanner: document.getElementById("noTradeBanner"),
+      noTradeReason: document.getElementById("noTradeReason"),
+    };
+
+    const autoStrategyEls = {
+      block: document.getElementById("autoStrategyBlock"),
+      regime: document.getElementById("autoStrategyRegime"),
+      entry: document.getElementById("autoEntryStrategy"),
+      exit: document.getElementById("autoExitStrategy"),
+      status: document.getElementById("autoStrategyStatus"),
+      reason: document.getElementById("autoStrategyReason"),
+    };
+
+    const exitAutoEls = {
+      preset: document.getElementById("exitAutoPreset"),
+      source: document.getElementById("exitAutoSource"),
+    };
+
+    const entryTabAutoEls = {
+      regime: document.getElementById("entryTabRegime"),
+      strategy: document.getElementById("entryTabStrategy"),
+      explanation: document.getElementById("entryTabExplanation"),
+    };
+
+    let cachedSettings = null;
+    let currentMode = "MANUAL";
 
     const marketTabsEl = document.getElementById("marketTabs");
     const marketTabButtons = marketTabsEl
@@ -1730,6 +2002,168 @@
 
     function pctText(v, digits = 2) {
       return v === null || v === undefined ? "–" : (v * 100).toFixed(digits) + "%";
+    }
+
+    function formatRegimeNumber(value, digits = 2) {
+      if (!Number.isFinite(value)) return "-";
+      return Number(value).toFixed(digits);
+    }
+
+    function formatRegimePercent(value, digits = 2) {
+      if (!Number.isFinite(value)) return "-";
+      return Number(value).toFixed(digits) + "%";
+    }
+
+    function formatConfidence(confidence) {
+      const value = Number(confidence);
+      if (!Number.isFinite(value)) return "-";
+      const label = value >= 0.7 ? "High" : value >= 0.5 ? "Medium" : "Low";
+      return value.toFixed(2) + " (" + label + ")";
+    }
+
+    function regimeExplanation(regime) {
+      switch (regime) {
+        case "TREND":
+          return "Trend detected";
+        case "RANGE":
+          return "Range detected";
+        case "BREAKOUT":
+          return "Breakout detected";
+        case "NO_TRADE":
+          return "No trade allowed";
+        default:
+          return "Regime scan pending";
+      }
+    }
+
+    function resolveExitPresetMeta(id) {
+      if (id == null) return null;
+      const byId = getExitPresetById(String(id)) || getExitPresetById(id);
+      if (byId) return byId;
+      const numeric = Number(id);
+      if (!Number.isFinite(numeric)) return null;
+      return exitPresets.find((preset) => preset.order === numeric) || null;
+    }
+
+    function setRegimeBadge(element, regime) {
+      if (!element) return;
+      const label = regime || "-";
+      const cssClass =
+        label === "NO_TRADE"
+          ? "badge-red"
+          : label === "RANGE"
+            ? "badge-amber"
+            : "badge-green";
+      element.innerHTML = `<span class="badge ${cssClass}">${escapeHtml(String(label))}</span>`;
+    }
+
+    function isAutoMode() {
+      return currentMode === "AUTO";
+    }
+
+    function setModeUi(mode) {
+      const next = mode === "AUTO" ? "AUTO" : "MANUAL";
+      const changed = currentMode !== next;
+      currentMode = next;
+      document.body.classList.toggle("mode-auto", next === "AUTO");
+      document.body.classList.toggle("mode-manual", next === "MANUAL");
+
+      if (modeIndicatorEl) {
+        modeIndicatorEl.textContent = "MODE: " + next;
+        modeIndicatorEl.classList.toggle("auto", next === "AUTO");
+        modeIndicatorEl.classList.toggle("manual", next === "MANUAL");
+      }
+
+      modeSwitchButtons.forEach((btn) => {
+        const targetMode = btn.dataset.mode === "AUTO" ? "AUTO" : "MANUAL";
+        btn.classList.toggle("active", targetMode === next);
+      });
+
+      if (entryStrategySelectEl) entryStrategySelectEl.disabled = next === "AUTO";
+      if (exitPresetSelectEl) exitPresetSelectEl.disabled = next === "AUTO";
+      if (applyExitPresetBtn) applyExitPresetBtn.disabled = next === "AUTO";
+
+      if (exitElems.slInput) exitElems.slInput.disabled = next === "AUTO";
+      if (exitElems.tpInput) exitElems.tpInput.disabled = next === "AUTO";
+      if (exitElems.trailStartInput) exitElems.trailStartInput.disabled = next === "AUTO";
+      if (exitElems.trailDistanceInput) exitElems.trailDistanceInput.disabled = next === "AUTO";
+      if (exitElems.candleEnabledInput) exitElems.candleEnabledInput.disabled = next === "AUTO";
+      if (exitElems.candleRedInput) exitElems.candleRedInput.disabled = next === "AUTO";
+
+      if (changed) {
+        renderEntryStrategyTable();
+        renderExitPresetTable();
+      }
+    }
+
+    function updateRegimeUi(regimeState, data) {
+      if (!regimeState) return;
+      const appliedRegime = regimeState.currentRegime || regimeState.detectedRegime || "-";
+      const detectedRegime = regimeState.detectedRegime || appliedRegime;
+      const blockReason = regimeState.blockReason || regimeState.reason || "";
+      const allowEntries = regimeState.allowEntries !== false;
+      const openPositions = Number(data?.openPositions) || 0;
+
+      if (regimeEls.proxySymbol) regimeEls.proxySymbol.textContent = regimeState.proxySymbol || "-";
+      if (regimeEls.timeframe) regimeEls.timeframe.textContent = regimeState.timeframe || "-";
+      if (regimeEls.lastScan) regimeEls.lastScan.textContent = formatTs(regimeState.updatedAt);
+      if (regimeEls.current) setRegimeBadge(regimeEls.current, appliedRegime);
+      if (regimeEls.detected) regimeEls.detected.textContent = detectedRegime;
+      if (regimeEls.confidence) regimeEls.confidence.textContent = formatConfidence(regimeState.confidence);
+      if (regimeEls.status) regimeEls.status.textContent = allowEntries ? "Active" : "Blocked";
+      if (regimeEls.reason) {
+        regimeEls.reason.textContent = blockReason ? "Reason: " + blockReason : "";
+      }
+
+      if (regimeEls.slope) regimeEls.slope.textContent = formatRegimePercent(regimeState.metrics?.slopePct, 3);
+      if (regimeEls.rsi) regimeEls.rsi.textContent = formatRegimeNumber(regimeState.metrics?.rsi, 0);
+      if (regimeEls.atrRatio) regimeEls.atrRatio.textContent = formatRegimeNumber(regimeState.metrics?.atrRatio, 2);
+      if (regimeEls.volumeRatio) regimeEls.volumeRatio.textContent = formatRegimeNumber(regimeState.metrics?.volumeRatio, 2);
+
+      const isNoTrade = appliedRegime === "NO_TRADE";
+      if (regimeEls.noTradeBanner) {
+        regimeEls.noTradeBanner.style.display = isNoTrade ? "block" : "none";
+      }
+      if (regimeEls.noTradeReason) {
+        regimeEls.noTradeReason.textContent = blockReason || regimeState.reason || "No trade";
+      }
+
+      const entryMeta = getEntryStrategyById(regimeState.entryStrategyId);
+      const entryLabel = entryMeta
+        ? `${entryMeta.id} - ${entryMeta.name}`
+        : regimeState.entryStrategyId != null
+          ? String(regimeState.entryStrategyId)
+          : "-";
+      const exitMeta = resolveExitPresetMeta(regimeState.exitPresetId);
+      const exitIdLabel =
+        regimeState.exitPresetId != null ? String(regimeState.exitPresetId) : null;
+      const exitLabel = exitMeta
+        ? `${exitIdLabel || exitMeta.id} - ${exitMeta.name}`
+        : exitIdLabel || "-";
+
+      if (autoStrategyEls.regime) autoStrategyEls.regime.textContent = appliedRegime;
+      if (autoStrategyEls.entry) autoStrategyEls.entry.textContent = entryLabel;
+      if (autoStrategyEls.exit) autoStrategyEls.exit.textContent = exitLabel;
+      if (autoStrategyEls.status) {
+        autoStrategyEls.status.textContent =
+          openPositions > 0 ? "Locked (open position)" : "Applied this loop";
+      }
+      if (autoStrategyEls.reason) {
+        const note = isNoTrade ? "No trade allowed" : regimeExplanation(appliedRegime);
+        autoStrategyEls.reason.textContent = blockReason ? `${note} - ${blockReason}` : note;
+      }
+
+      if (exitAutoEls.preset) exitAutoEls.preset.textContent = exitLabel;
+      if (exitAutoEls.source) {
+        const exitSourceId = exitIdLabel || (exitMeta ? exitMeta.id : "");
+        exitAutoEls.source.textContent = exitSourceId
+          ? `Derived from Exit Preset ${exitSourceId}`
+          : "Derived from exit preset";
+      }
+
+      if (entryTabAutoEls.regime) entryTabAutoEls.regime.textContent = appliedRegime;
+      if (entryTabAutoEls.strategy) entryTabAutoEls.strategy.textContent = entryLabel;
+      if (entryTabAutoEls.explanation) entryTabAutoEls.explanation.textContent = regimeExplanation(appliedRegime);
     }
 
     function escapeHtml(str) {
@@ -2286,16 +2720,17 @@
     function renderEntryStrategyTable() {
       if (!strategyTableBodyEl) return;
       const rows = entryStrategies.map((s) => {
+        const disabledAttr = isAutoMode() ? "disabled" : "";
         const params = s.parameters
           .map((p) => `<div><strong>${p.label}:</strong> ${p.value}</div>`)
           .join("");
         const pairedExitId = getEntryExitPair(s.id);
         const pairingSelect = `
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <select class="pairing-select" data-entry-id="${s.id}">
+            <select class="pairing-select" data-entry-id="${s.id}" ${disabledAttr}>
               ${buildExitPresetOptions(pairedExitId)}
             </select>
-            <button class="btn btn-outline btn-small" data-action="load-pair" data-entry-id="${s.id}">
+            <button class="btn btn-outline btn-small" data-action="load-pair" data-entry-id="${s.id}" ${disabledAttr}>
               Load exit preset
             </button>
           </div>
@@ -2317,22 +2752,23 @@
     function renderExitPresetTable() {
       if (!exitStrategyTableBodyEl) return;
       const rows = exitPresets.map((preset) => {
+        const disabledAttr = isAutoMode() ? "disabled" : "";
         const values = `
           <div class="preset-inputs">
             <label class="preset-input">SL
-              <input type="number" step="0.1" min="0.1" max="50" value="${preset.sl}" data-field="sl" />
+              <input type="number" step="0.1" min="0.1" max="50" value="${preset.sl}" data-field="sl" ${disabledAttr} />
             </label>
             <label class="preset-input">TP
-              <input type="number" step="0.1" min="0.1" max="100" value="${preset.tp}" data-field="tp" />
+              <input type="number" step="0.1" min="0.1" max="100" value="${preset.tp}" data-field="tp" ${disabledAttr} />
             </label>
             <label class="preset-input">Trail Start
-              <input type="number" step="0.1" min="0.1" max="100" value="${preset.trailStart}" data-field="trailStart" />
+              <input type="number" step="0.1" min="0.1" max="100" value="${preset.trailStart}" data-field="trailStart" ${disabledAttr} />
             </label>
             <label class="preset-input">Trail Distance
-              <input type="number" step="0.1" min="0.1" max="100" value="${preset.trailDistance}" data-field="trailDistance" />
+              <input type="number" step="0.1" min="0.1" max="100" value="${preset.trailDistance}" data-field="trailDistance" ${disabledAttr} />
             </label>
             <label class="preset-input">Candle Red
-              <input type="number" step="1" min="0" max="100" value="${preset.candleRed}" data-field="candleRed" />
+              <input type="number" step="1" min="0" max="100" value="${preset.candleRed}" data-field="candleRed" ${disabledAttr} />
             </label>
           </div>
         `;
@@ -2344,13 +2780,13 @@
             <td>${values}</td>
             <td>
               <div style="display: flex; flex-direction: column; gap: 6px;">
-                <button class="btn btn-outline btn-small" data-action="load-exit" data-exit-id="${preset.id}">
+                <button class="btn btn-outline btn-small" data-action="load-exit" data-exit-id="${preset.id}" ${disabledAttr}>
                   Load
                 </button>
-                <button class="btn btn-primary btn-small" data-action="save-exit" data-exit-id="${preset.id}">
+                <button class="btn btn-primary btn-small" data-action="save-exit" data-exit-id="${preset.id}" ${disabledAttr}>
                   Save
                 </button>
-                <button class="btn btn-outline btn-small" data-action="reset-exit" data-exit-id="${preset.id}">
+                <button class="btn btn-outline btn-small" data-action="reset-exit" data-exit-id="${preset.id}" ${disabledAttr}>
                   Reset
                 </button>
               </div>
@@ -2556,6 +2992,13 @@
 
         const cfg = data;
         setBotRunUi(data.botRunning !== false);
+
+        const regimeState = data.regimeState || null;
+        const mode = regimeState?.mode || cachedSettings?.REGIME_ENGINE?.MODE || currentMode;
+        setModeUi(mode);
+        if (regimeState) {
+          updateRegimeUi(regimeState, data);
+        }
         if (currentMarket === "stocks") {
           updateStocksStrategyStatus(cfg);
         } else {
@@ -2586,31 +3029,41 @@
           statusEls.pnl.textContent = formatPnl(data.performance.lastPnlPct);
         }
 
-        if (data.exitConfig) {
-          const ex = data.exitConfig;
+        const exitSource =
+          isAutoMode() && data.regimeState?.exitConfig
+            ? data.regimeState.exitConfig
+            : data.exitConfig;
+        if (exitSource) {
+          const ex = exitSource;
+          const inputSource = data.exitConfig || ex;
 
-          exitElems.slValue.textContent = pctText(ex.slPct);
-          exitElems.tpValue.textContent = pctText(ex.tpPct);
-          exitElems.trailStartValue.textContent = pctText(ex.trailStartPct);
-          exitElems.trailDistanceValue.textContent = pctText(ex.trailDistancePct);
-          const candleEnabled = !!ex.candleExitEnabled;
+          exitElems.slValue.textContent = pctText(ex.SL_PCT ?? ex.slPct);
+          exitElems.tpValue.textContent = pctText(ex.TP_PCT ?? ex.tpPct);
+          exitElems.trailStartValue.textContent = pctText(
+            ex.TRAIL_START_PCT ?? ex.trailStartPct
+          );
+          exitElems.trailDistanceValue.textContent = pctText(
+            ex.TRAIL_DISTANCE_PCT ?? ex.trailDistancePct
+          );
+          const candleEnabled = !!(ex.CANDLE_EXIT_ENABLED ?? ex.candleExitEnabled);
+          const candleValue = ex.CANDLE_RED_TRIGGER_PCT ?? ex.candleRedTriggerPct;
           exitElems.candleRedValue.textContent = candleEnabled
-            ? pctText(ex.candleRedTriggerPct, 0)
+            ? `Enabled (${pctText(candleValue, 0)})`
             : "Disabled";
           exitElems.candleEnabledInput.checked = candleEnabled;
           exitElems.candleRedInput.disabled = !candleEnabled;
 
           // Prefill inputs only if empty, to avoid overwriting user typing
-          if (!exitElems.slInput.value && ex.slPct != null)
-            exitElems.slInput.value = (ex.slPct * 100).toFixed(2);
-          if (!exitElems.tpInput.value && ex.tpPct != null)
-            exitElems.tpInput.value = (ex.tpPct * 100).toFixed(2);
-          if (!exitElems.trailStartInput.value && ex.trailStartPct != null)
-            exitElems.trailStartInput.value = (ex.trailStartPct * 100).toFixed(2);
-          if (!exitElems.trailDistanceInput.value && ex.trailDistancePct != null)
-            exitElems.trailDistanceInput.value = (ex.trailDistancePct * 100).toFixed(2);
-          if (!exitElems.candleRedInput.value && ex.candleRedTriggerPct != null)
-            exitElems.candleRedInput.value = (ex.candleRedTriggerPct * 100).toFixed(0);
+          if (!exitElems.slInput.value && inputSource.slPct != null)
+            exitElems.slInput.value = (inputSource.slPct * 100).toFixed(2);
+          if (!exitElems.tpInput.value && inputSource.tpPct != null)
+            exitElems.tpInput.value = (inputSource.tpPct * 100).toFixed(2);
+          if (!exitElems.trailStartInput.value && inputSource.trailStartPct != null)
+            exitElems.trailStartInput.value = (inputSource.trailStartPct * 100).toFixed(2);
+          if (!exitElems.trailDistanceInput.value && inputSource.trailDistancePct != null)
+            exitElems.trailDistanceInput.value = (inputSource.trailDistancePct * 100).toFixed(2);
+          if (!exitElems.candleRedInput.value && inputSource.candleRedTriggerPct != null)
+            exitElems.candleRedInput.value = (inputSource.candleRedTriggerPct * 100).toFixed(0);
         }
 
         const symbolsCount =
@@ -2714,6 +3167,51 @@
     }
 
     // --- SETTINGS ---
+    async function loadSettingsCache() {
+      try {
+        const res = await fetch("/api/settings");
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        cachedSettings = data.settings || {};
+        if (cachedSettings?.REGIME_ENGINE?.MODE) {
+          setModeUi(cachedSettings.REGIME_ENGINE.MODE);
+        }
+      } catch (err) {
+        // Allow status polling to drive mode UI if settings load fails.
+      }
+    }
+
+    async function updateModeSetting(nextMode) {
+      try {
+        const mode = nextMode === "AUTO" ? "AUTO" : "MANUAL";
+        botControlStatusEl.textContent = `Updating mode to ${mode}...`;
+        if (!cachedSettings) await loadSettingsCache();
+        const base = cachedSettings || {};
+        const payload = {
+          ...base,
+          REGIME_ENGINE: {
+            ...(base.REGIME_ENGINE || {}),
+            MODE: mode,
+          },
+        };
+
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "failed");
+        cachedSettings = data.settings || payload;
+        botControlStatusEl.textContent = `Mode updated to ${mode}.`;
+        setModeUi(mode);
+        await fetchStatus();
+      } catch (err) {
+        botControlStatusEl.textContent = "Mode update error: " + err.message;
+      }
+    }
+
     async function fetchSettings() {
       try {
         settingsStatusEl.textContent = "Loading settings...";
@@ -2722,6 +3220,10 @@
         if (!data.ok) throw new Error(data.error || "failed");
 
         const settings = data.settings || {};
+        cachedSettings = settings;
+        if (settings?.REGIME_ENGINE?.MODE) {
+          setModeUi(settings.REGIME_ENGINE.MODE);
+        }
         settingsInputs.binanceApiKey.value = settings.binanceApiKey || "";
         settingsInputs.binanceApiSecret.value = settings.binanceApiSecret || "";
         settingsInputs.binanceBaseUrl.value = settings.binanceBaseUrl || "";
@@ -2745,7 +3247,9 @@
     async function saveSettings() {
       try {
         settingsStatusEl.textContent = "Saving settings...";
+        const base = cachedSettings || {};
         const payload = {
+          ...base,
           binanceApiKey: settingsInputs.binanceApiKey.value.trim(),
           binanceApiSecret: settingsInputs.binanceApiSecret.value.trim(),
           binanceBaseUrl: settingsInputs.binanceBaseUrl.value.trim(),
@@ -2756,6 +3260,10 @@
           alpacaTradingBaseUrl: settingsInputs.alpacaTradingBaseUrl.value.trim(),
           alpacaDataBaseUrl: settingsInputs.alpacaDataBaseUrl.value.trim(),
           alpacaDataFeed: settingsInputs.alpacaDataFeed.value.trim(),
+          REGIME_ENGINE: {
+            ...(base.REGIME_ENGINE || {}),
+            MODE: base.REGIME_ENGINE?.MODE || currentMode,
+          },
         };
 
         const res = await fetch("/api/settings", {
@@ -2766,6 +3274,7 @@
 
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "failed");
+        cachedSettings = data.settings || payload;
         settingsStatusEl.textContent = "Settings saved successfully.";
       } catch (err) {
         settingsStatusEl.textContent = "Settings error: " + err.message;
@@ -2933,6 +3442,12 @@
       if (settingsPanelEl.classList.contains("open")) {
         fetchSettings();
       }
+    });
+    modeSwitchButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const targetMode = btn.dataset.mode === "AUTO" ? "AUTO" : "MANUAL";
+        updateModeSetting(targetMode);
+      });
     });
     saveSettingsBtn.addEventListener("click", saveSettings);
     if (testAlpacaBtn) testAlpacaBtn.addEventListener("click", testAlpacaConnection);
@@ -3103,6 +3618,8 @@
 
     // --- INITIAL LOAD ---
     updateAutoScrollUi();
+    setModeUi(currentMode);
+    loadSettingsCache();
     setActiveMarket(currentMarket);
   </script>
 </body>

@@ -396,6 +396,12 @@ function startHttpServer(shared = {}) {
       const symbolsCount = state.positions
         ? Object.keys(state.positions).length
         : 0;
+      const openPositionsCount = state.positions
+        ? Object.values(state.positions).filter((pos) => pos?.hasPosition).length
+        : 0;
+      const sharedOpenPositions = Number.isFinite(marketShared.openPositions)
+        ? marketShared.openPositions
+        : openPositionsCount;
 
       const payload = {
         ok: true,
@@ -403,6 +409,8 @@ function startHttpServer(shared = {}) {
           marketShared.activeStrategyId ?? runtimeConfig.activeStrategyId,
         botRunning: shared?.botRunning !== false,
         symbolsCount,
+        openPositions: sharedOpenPositions,
+        regimeState: marketShared.regimeState || null,
         stateSummary: {
           symbols: symbolsCount,
           lastUpdateTs: state.lastUpdateTs || null,

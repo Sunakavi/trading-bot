@@ -8,7 +8,7 @@ const SETTINGS_FILE = resolveDataPath("settings.json");
 const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
 
 const DEFAULT_REGIME_ENGINE = {
-  MODE: "MANUAL",
+  MODE: "AUTO",
   REGIME_PROXY_SYMBOL: "BTCUSDT",
   TIMEFRAME: "15m",
   MIN_CONFIDENCE: 0.55,

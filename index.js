@@ -231,6 +231,10 @@ function describeExitPreset(exitPresetId) {
   return `${preset.id} (${preset.name})`;
 }
 
+function countOpenPositions(positions = {}) {
+  return Object.values(positions).filter((pos) => pos?.hasPosition).length;
+}
+
 
 const POSITION_DEFAULTS = {
   hasPosition: false,
@@ -553,6 +557,7 @@ async function runMarketLoop(market) {
 
   while (true) {
     marketShared.activeStrategyId = runtimeConfig.activeStrategyId;
+    marketShared.openPositions = countOpenPositions(context.positions);
 
     if (shared.stopRequested) {
       logger(
@@ -680,14 +685,6 @@ async function runMarketLoop(market) {
         detection.config
       );
 
-      marketShared.regimeState = {
-        currentRegime: lock.currentRegime,
-        holdCount: lock.holdCount,
-        detectedRegime: detection.regime,
-        confidence: detection.confidence,
-        updatedAt: Date.now(),
-      };
-
       const appliedRegime = lock.currentRegime;
       const mode = detection.config.MODE;
       const pack = detection.config.STRATEGY_PACKS?.[appliedRegime] || null;
@@ -723,6 +720,28 @@ async function runMarketLoop(market) {
       };
       exitConfigResolver = (presetId) =>
         resolveExitPresetConfig(presetId, baseExitConfig);
+      const resolvedExitConfig = selectedExitPresetId
+        ? exitConfigResolver(selectedExitPresetId)
+        : baseExitConfig;
+
+      marketShared.regimeState = {
+        currentRegime: lock.currentRegime,
+        holdCount: lock.holdCount,
+        lockStatus: lock.lockStatus,
+        detectedRegime: detection.regime,
+        confidence: detection.confidence,
+        mode,
+        reason: detection.reason,
+        blockReason,
+        metrics: detection.metrics || {},
+        proxySymbol: detection.config.REGIME_PROXY_SYMBOL,
+        timeframe: detection.config.TIMEFRAME,
+        entryStrategyId,
+        exitPresetId: selectedExitPresetId,
+        allowEntries: allowEntriesByRegime,
+        exitConfig: resolvedExitConfig,
+        updatedAt: Date.now(),
+      };
 
       const metrics = detection.metrics || {};
       const confidence = Number.isFinite(detection.confidence)
