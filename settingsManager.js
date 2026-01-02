@@ -32,7 +32,7 @@ const DEFAULT_REGIME_ENGINE = {
   RSI_RANGE_MAX: 55,
   ATR_RATIO_RANGE_MAX: 1.05,
   STRATEGY_PACKS: {
-    TREND: { entryStrategyId: 101, exitPresetId: 4 },
+    TREND: { entryStrategyId: 101, exitPresetId: 1 },
     RANGE: { entryStrategyId: 103, exitPresetId: 3 },
     BREAKOUT: { entryStrategyId: 105, exitPresetId: 7 },
   },

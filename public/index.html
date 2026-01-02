@@ -1283,6 +1283,7 @@
             </select>
           </div>
         </div>
+        <div class="status-line crypto-only manual-only" id="entryPresetInfo">This preset changes: MA, Pullback, RSI, ATR, Volume.</div>
         <div class="status-line crypto-only manual-only" id="strategyStatus">Select an entry strategy to send it live.</div>
 
         <!-- INTERVAL -->
@@ -1388,11 +1389,11 @@
           </div>
         </div>
         <p class="subtitle" style="margin-bottom: 12px;">
-          These presets adjust trend, pullback, momentum, ATR, and volume filters. Selecting one updates the bot
+          These presets adjust MA, Pullback, RSI, ATR, and Volume filters. Selecting one updates the bot
           immediately for the next trading loop.
         </p>
         <div class="entry-variables">
-          <strong>Key entry variables:</strong> MA Fast / MA Slow, Pullback %, RSI Range, ATR Filter, Volume Surge.
+          <strong>This preset changes:</strong> MA, Pullback, RSI, ATR, Volume.
         </div>
         <div class="strategy-table-wrapper">
           <table class="strategy-table">
@@ -1409,6 +1410,24 @@
             <tbody id="strategyTableBody"></tbody>
           </table>
         </div>
+      <details class="legacy-block">
+        <summary>Legacy (Advanced)</summary>
+        <p class="subtitle" style="margin-bottom: 12px;">Legacy entry IDs are accepted but mapped to the closest of Entry 1-5.</p>
+        <div class="strategy-table-wrapper">
+          <table class="strategy-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Purpose</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="legacyStrategyTableBody"></tbody>
+          </table>
+        </div>
+      </details>
+
       </div>
 
       <div id="exitStrategyTab" class="tab-panel">
@@ -1429,7 +1448,24 @@
             </thead>
             <tbody id="exitStrategyTableBody"></tbody>
           </table>
+        <details class="legacy-block">
+        <summary>Legacy (Advanced)</summary>
+        <p class="subtitle" style="margin-bottom: 12px;">Legacy exit IDs are accepted but mapped to Exit 1-5.</p>
+        <div class="strategy-table-wrapper">
+          <table class="strategy-table">
+            <thead>
+              <tr>
+                <th>Legacy ID</th>
+                <th>Name</th>
+                <th>Mapped Exit</th>
+              </tr>
+            </thead>
+            <tbody id="legacyExitPresetBody"></tbody>
+          </table>
         </div>
+      </details>
+
+      </div>
       </div>
     </div>
   </div>
@@ -1679,193 +1715,211 @@
     const entryStrategySelectEl = document.getElementById("entryStrategySelect");
     const strategyTableBodyEl = document.getElementById("strategyTableBody");
     const exitStrategyTableBodyEl = document.getElementById("exitStrategyTableBody");
+    const legacyStrategyTableBodyEl = document.getElementById("legacyStrategyTableBody");
+    const legacyExitPresetBodyEl = document.getElementById("legacyExitPresetBody");
     const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
     const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
 
     const ENTRY_EXIT_PAIR_KEY = "entryExitPairs";
     const EXIT_PRESET_STORAGE_KEY = "exitPresetOverrides";
-
     const entryStrategies = [
       {
         id: 101,
-        name: "Conservative Trend Entry",
-        purpose: "Stable trends, avoid whipsaw",
-        behavior: "Few but high-quality trades",
+        displayId: 1,
+        name: "Trend Conservative",
+        purpose: "Steady trends, avoid noise",
+        behavior: "Fewer but higher-quality trend entries",
         logicGroup: "Trend/Pullback (Strategy 2)",
-        defaultExitPresetId: "conservative",
+        defaultExitPresetId: 1,
+        group: "official",
         parameters: [
           { label: "Fast MA", value: "20" },
           { label: "Slow MA", value: "200" },
-          { label: "Pullback", value: "1.0%–2.0%" },
-          { label: "RSI", value: "50–60" },
-          { label: "ATR Filter", value: "ON (ATR > ATR_MA × 0.7)" },
+          { label: "Pullback", value: "1.0%-2.0%" },
+          { label: "RSI", value: "50-60" },
+          { label: "ATR Filter", value: "ON (ATR > ATR_MA x 0.7)" },
           { label: "Volume Surge", value: "Optional" },
         ],
       },
       {
         id: 102,
-        name: "Aggressive Trend Entry",
-        purpose: "Strong trends & momentum markets",
-        behavior: "Early entries on breakouts and shallow pullbacks",
+        displayId: 2,
+        name: "Trend Aggressive",
+        purpose: "Strong trends and momentum",
+        behavior: "Faster trend entries on momentum",
         logicGroup: "Trend/Pullback (Strategy 2)",
-        defaultExitPresetId: "aggressive-trend",
+        defaultExitPresetId: 4,
+        group: "official",
         parameters: [
           { label: "Fast MA", value: "10" },
           { label: "Slow MA", value: "50" },
-          { label: "Pullback", value: "2.5%–4%" },
-          { label: "RSI", value: "55–70" },
+          { label: "Pullback", value: "2.5%-4.0%" },
+          { label: "RSI", value: "55-70" },
           { label: "ATR Filter", value: "OFF" },
-          { label: "Volume Surge", value: "ON (≥ 20% above 10-candle avg)" },
-        ],
-      },
-      {
-        id: 103,
-        name: "Scalping Mode",
-        purpose: "Small moves, sideways markets",
-        behavior: "Many small, fast trades",
-        logicGroup: "EMA + ATR Momentum (Strategy 3)",
-        defaultExitPresetId: "safe-scalping",
-        parameters: [
-          { label: "Fast MA", value: "9" },
-          { label: "Slow MA", value: "21" },
-          { label: "Pullback", value: "≤ 1.0%" },
-          { label: "RSI", value: "45–55" },
-          { label: "ATR Filter", value: "OFF" },
-          { label: "Volume Surge", value: "Low (≥ 10%)" },
+          { label: "Volume Surge", value: "ON (>= 20% above 10-candle avg)" },
         ],
       },
       {
         id: 104,
-        name: "Deep Pullback Entry",
-        purpose: "Buy deep dips inside an uptrend",
+        displayId: 3,
+        name: "Swing Deep Pullback",
+        purpose: "Buy deeper dips inside an uptrend",
         behavior: "Waits for larger pullbacks for discount entries",
         logicGroup: "Trend/Pullback (Strategy 2)",
-        defaultExitPresetId: "atr-mixed",
+        defaultExitPresetId: 6,
+        group: "official",
         parameters: [
           { label: "Fast MA", value: "50" },
           { label: "Slow MA", value: "200" },
-          { label: "Pullback", value: "3%–6%" },
-          { label: "RSI", value: "28–40" },
+          { label: "Pullback", value: "3%-6%" },
+          { label: "RSI", value: "28-40" },
           { label: "ATR Filter", value: "ON" },
           { label: "Volume Surge", value: "OFF" },
         ],
       },
       {
         id: 105,
-        name: "Breakout Entry",
-        purpose: "Capture large upside breakouts",
-        behavior: "Ignores pullbacks; enters on momentum bursts",
-        logicGroup: "EMA + ATR Momentum (Strategy 3)",
-        defaultExitPresetId: "breakout-mode",
+        displayId: 4,
+        name: "Breakout",
+        purpose: "Capture upside breakouts",
+        behavior: "Enters on breakouts with volume expansion",
+        logicGroup: "Aggressive Breakout",
+        defaultExitPresetId: 7,
+        group: "official",
         parameters: [
-          { label: "Fast MA", value: "15" },
-          { label: "Slow MA", value: "50" },
-          { label: "Pullback", value: "0%–1%" },
-          { label: "RSI", value: "≥ 60" },
-          { label: "ATR Filter", value: "ON" },
-          { label: "Volume Surge", value: "High (≥ 30%)" },
+          { label: "Breakout Lookback", value: "20 candles" },
+          { label: "Volume MA", value: "10" },
+          { label: "Volume Mult", value: "1.3x" },
+          { label: "RSI", value: "60-80" },
+          { label: "Trend Confirm", value: "EMA rising or price > VWAP" },
         ],
       },
       {
-        id: 106,
-        name: "Volatility Adaptive Entry (ATR-Based)",
-        purpose: "Fit entries to volatility",
-        behavior: "Pullback + entry thresholds scale with ATR",
+        id: 103,
+        displayId: 5,
+        name: "Scalping / Micro-Momentum",
+        purpose: "Quick pops in low-volatility ranges",
+        behavior: "Short bursts with tight filters",
         logicGroup: "EMA + ATR Momentum (Strategy 3)",
-        defaultExitPresetId: "atr-mixed",
+        defaultExitPresetId: 3,
+        group: "official",
         parameters: [
-          { label: "Fast MA", value: "10" },
-          { label: "Slow MA", value: "30" },
-          { label: "Pullback", value: "ATR × 1.2" },
-          { label: "RSI", value: "48–65" },
-          { label: "ATR Filter", value: "≥ 1.5 × Average ATR" },
-          { label: "Volume Surge", value: "Recommended" },
-        ],
-      },
-      {
-        id: 107,
-        name: "MA Slope Entry",
-        purpose: "Detect the beginning of a new trend",
-        behavior: "Enters when MA slopes show acceleration",
-        logicGroup: "Trend/Pullback (Strategy 2)",
-        defaultExitPresetId: "momentum-rider",
-        parameters: [
-          { label: "Fast MA Slope", value: "> 0.1% per candle" },
-          { label: "Slow MA Slope", value: "Positive" },
-          { label: "Pullback", value: "1%–3%" },
-          { label: "RSI", value: "50–65" },
-          { label: "ATR Filter", value: "OFF" },
-          { label: "Volume Surge", value: "Moderate" },
-        ],
-      },
-      {
-        id: 108,
-        name: "EMA + ATR Core (Enhanced Version of Strategy 3)",
-        purpose: "Volatility-aware swing entries",
-        behavior: "Entries triggered by volatility zones around EMAs",
-        logicGroup: "EMA + ATR Momentum (Strategy 3)",
-        defaultExitPresetId: "momentum-rider",
-        parameters: [
-          { label: "EMA", value: "20 / 50" },
-          { label: "ATR Stop", value: "ATR × 1.8" },
-          { label: "Pullback", value: "ATR × 0.8" },
-          { label: "RSI", value: "45–60" },
-          { label: "Volume Surge", value: "Optional" },
+          { label: "EMA Fast/Slow", value: "9 / 21" },
+          { label: "Body vs ATR", value: "> 0.7x ATR" },
+          { label: "RSI", value: "45-55" },
+          { label: "Volume Surge", value: "10% above avg" },
         ],
       },
       {
         id: 1,
-        name: "Legacy – Golden Cross",
+        displayId: "L1",
+        name: "Legacy - Golden Cross",
         purpose: "Baseline moving-average crossover",
         behavior: "Enters on SMA 12/50 crossovers",
         logicGroup: "Golden Cross (Strategy 1)",
-        defaultExitPresetId: "conservative",
+        defaultExitPresetId: 1,
+        group: "legacy",
         parameters: [
           { label: "Fast MA", value: "12" },
           { label: "Slow MA", value: "50" },
-          { label: "Pullback", value: "Cross confirmation" },
-          { label: "RSI", value: "Not enforced" },
-          { label: "ATR Filter", value: "None" },
-          { label: "Volume Surge", value: "Not enforced" },
         ],
       },
       {
         id: 2,
-        name: "Legacy – Trend/Pullback",
+        displayId: "L2",
+        name: "Legacy - Trend/Pullback",
         purpose: "Original trend + pullback logic",
         behavior: "Trend filtered pullbacks with RSI and candle checks",
         logicGroup: "Trend/Pullback (Strategy 2)",
-        defaultExitPresetId: "conservative",
+        defaultExitPresetId: 1,
+        group: "legacy",
         parameters: [
           { label: "Fast MA", value: "Config FAST_MA" },
           { label: "Slow MA", value: "Config SLOW_MA" },
-          { label: "Pullback", value: "~0.4%–0.8% below fast MA" },
-          { label: "RSI", value: "Config RSI min/max" },
-          { label: "ATR Filter", value: "None" },
-          { label: "Volume Surge", value: "Optional" },
         ],
       },
       {
         id: 3,
-        name: "Legacy – EMA + ATR",
-        purpose: "EMA 9/21 crossover with volatility filter",
-        behavior: "Momentum entries when crossover plus candle body > 0.7 × ATR",
+        displayId: "L3",
+        name: "Legacy - EMA + ATR",
+        purpose: "EMA crossover with volatility filter",
+        behavior: "Momentum entries when crossover plus body > 0.7 x ATR",
         logicGroup: "EMA + ATR Momentum (Strategy 3)",
-        defaultExitPresetId: "momentum-rider",
+        defaultExitPresetId: 3,
+        group: "legacy",
         parameters: [
           { label: "EMA", value: "9 / 21" },
-          { label: "Volatility", value: "Body > 0.7 × ATR" },
-          { label: "Pullback", value: "Not required" },
-          { label: "RSI", value: "Not enforced" },
-          { label: "ATR Filter", value: "Implicit via body" },
-          { label: "Volume Surge", value: "Not enforced" },
+          { label: "Volatility", value: "Body > 0.7 x ATR" },
+        ],
+      },
+      {
+        id: 106,
+        displayId: "L6",
+        name: "Legacy - Volatility Adaptive Entry",
+        purpose: "Fit entries to volatility",
+        behavior: "Pullback + entry thresholds scale with ATR",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: 6,
+        group: "legacy",
+        parameters: [
+          { label: "Fast MA", value: "10" },
+          { label: "Slow MA", value: "30" },
+        ],
+      },
+      {
+        id: 107,
+        displayId: "L7",
+        name: "Legacy - MA Slope Entry",
+        purpose: "Detect the beginning of a new trend",
+        behavior: "Enters when MA slopes show acceleration",
+        logicGroup: "Trend/Pullback (Strategy 2)",
+        defaultExitPresetId: 4,
+        group: "legacy",
+        parameters: [
+          { label: "Fast MA Slope", value: "> 0.1% per candle" },
+          { label: "Slow MA Slope", value: "Positive" },
+        ],
+      },
+      {
+        id: 108,
+        displayId: "L8",
+        name: "Legacy - EMA + ATR Core",
+        purpose: "Volatility-aware swing entries",
+        behavior: "Entries triggered by volatility zones around EMAs",
+        logicGroup: "EMA + ATR Momentum (Strategy 3)",
+        defaultExitPresetId: 4,
+        group: "legacy",
+        parameters: [
+          { label: "EMA", value: "20 / 50" },
+          { label: "ATR Stop", value: "ATR x 1.8" },
         ],
       },
     ];
+    const entryStrategiesOfficial = entryStrategies.filter((s) => s.group === "official");
+    const entryStrategiesLegacy = entryStrategies.filter((s) => s.group === "legacy");
 
+    const LEGACY_ENTRY_MAP = {
+      1: "Legacy only",
+      2: "Entry 1",
+      3: "Entry 5",
+      106: "Entry 5",
+      107: "Entry 2",
+      108: "Entry 5",
+    };
+
+    const EXIT_PRESET_ALIAS_MAP = {
+      1: 1,
+      2: 4,
+      3: 3,
+      4: 4,
+      5: 6,
+      6: 6,
+      7: 7,
+      8: 3,
+    };
     const exitPresetDefaults = [
       {
-        id: "conservative",
+        id: 1,
         order: 1,
         name: "Conservative",
         purpose: "Lower risk, wider stops with moderate targets.",
@@ -1876,31 +1930,9 @@
         candleRed: 60,
       },
       {
-        id: "aggressive-trend",
+        id: 4,
         order: 2,
-        name: "Aggressive Trend",
-        purpose: "Ride fast trends with tighter risk controls.",
-        sl: 0.9,
-        tp: 3.2,
-        trailStart: 1.6,
-        trailDistance: 0.8,
-        candleRed: 40,
-      },
-      {
-        id: "safe-scalping",
-        order: 3,
-        name: "Safe Scalping",
-        purpose: "Quick exits for short-term scalps.",
-        sl: 0.6,
-        tp: 1.2,
-        trailStart: 0.8,
-        trailDistance: 0.4,
-        candleRed: 50,
-      },
-      {
-        id: "momentum-rider",
-        order: 4,
-        name: "Momentum Rider",
+        name: "Trend Rider",
         purpose: "Let momentum breathe before trailing.",
         sl: 1.0,
         tp: 4.0,
@@ -1909,31 +1941,20 @@
         candleRed: 30,
       },
       {
-        id: "atr-mixed",
-        order: 5,
-        name: "ATR Mixed (semi-dynamic)",
-        purpose: "Balanced trailing with ATR-aware spacing.",
+        id: 3,
+        order: 3,
+        name: "Scalping",
+        purpose: "Quick exits for short-term scalps.",
         sl: 0.6,
-        tp: 1.4,
-        trailStart: 2.0,
-        trailDistance: 1.0,
-        candleRed: 40,
+        tp: 1.2,
+        trailStart: 0.8,
+        trailDistance: 0.4,
+        candleRed: 50,
       },
       {
-        id: "volatility-shield",
-        order: 6,
-        name: "Volatility Shield",
-        purpose: "More protection during choppy sessions.",
-        sl: 1.5,
-        tp: 2.5,
-        trailStart: 2.2,
-        trailDistance: 1.2,
-        candleRed: 70,
-      },
-      {
-        id: "breakout-mode",
-        order: 7,
-        name: "Breakout Mode",
+        id: 7,
+        order: 4,
+        name: "Breakout",
         purpose: "Give big breakouts space to extend.",
         sl: 0.8,
         tp: 5.0,
@@ -1942,17 +1963,27 @@
         candleRed: 20,
       },
       {
-        id: "ultra-tight",
-        order: 8,
-        name: "Ultra Tight",
-        purpose: "Minimal exposure for quick exits.",
-        sl: 0.4,
-        tp: 0.8,
-        trailStart: 0.5,
-        trailDistance: 0.25,
-        candleRed: 60,
+        id: 6,
+        order: 5,
+        name: "Volatility Shield",
+        purpose: "More protection during choppy sessions.",
+        sl: 1.5,
+        tp: 2.5,
+        trailStart: 2.2,
+        trailDistance: 1.2,
+        candleRed: 70,
       },
     ];
+
+    const legacyExitPresets = [
+      { id: 2, name: "Aggressive Trend" },
+      { id: 5, name: "ATR Mixed (semi-dynamic)" },
+      { id: 8, name: "Ultra Tight" },
+    ];
+
+
+    
+
     let exitPresets = loadExitPresets(exitPresetDefaults);
 
     function applyExitPreset(id) {
@@ -2023,6 +2054,26 @@
       if (!Number.isFinite(value)) return "-";
       const label = value >= 0.7 ? "High" : value >= 0.5 ? "Medium" : "Low";
       return value.toFixed(2) + " (" + label + ")";
+    }
+
+    function formatEntryLabel(meta, fallbackId) {
+      const displayId = meta?.displayId ?? meta?.id ?? fallbackId;
+      return meta ? `${displayId} - ${meta.name}` : fallbackId || "-";
+    }
+
+    function formatExitLabel(meta, fallbackId) {
+      const displayId = meta?.order ?? meta?.id ?? fallbackId;
+      return meta ? `${displayId} - ${meta.name}` : fallbackId || "-";
+    }
+
+    function formatRegimeCheckSummary(regimeState) {
+      if (!regimeState) return "";
+      const applied = regimeState.detectedRegime || regimeState.currentRegime;
+      const checks = regimeState.checks?.[applied]?.checks || [];
+      if (!checks.length) return "";
+      return checks
+        .map((check) => `${check.label}:${check.passed ? "ok" : "fail"}`)
+        .join(" | ");
     }
 
     function regimeExplanation(regime) {
@@ -2133,8 +2184,14 @@
       if (regimeEls.detected) regimeEls.detected.textContent = detectedRegime;
       if (regimeEls.confidence) regimeEls.confidence.textContent = formatConfidence(regimeState.confidence);
       if (regimeEls.status) regimeEls.status.textContent = allowEntries ? "Active" : "Blocked";
+      const checkSummary = formatRegimeCheckSummary(regimeState);
+      const selectionNote = regimeState.selection ? `Selection: ${regimeState.selection}` : "";
+      const reasonParts = [];
+      if (blockReason) reasonParts.push(`Reason: ${blockReason}`);
+      if (selectionNote) reasonParts.push(selectionNote);
+      if (checkSummary) reasonParts.push(`Checks: ${checkSummary}`);
       if (regimeEls.reason) {
-        regimeEls.reason.textContent = blockReason ? "Reason: " + blockReason : "";
+        regimeEls.reason.textContent = reasonParts.join(" | ");
       }
 
       if (regimeEls.slope) regimeEls.slope.textContent = formatRegimePercent(regimeState.metrics?.slopePct, 3);
@@ -2149,18 +2206,17 @@
       if (regimeEls.noTradeReason) {
         regimeEls.noTradeReason.textContent = blockReason || regimeState.reason || "No trade";
       }
-
       const entryMeta = getEntryStrategyById(regimeState.entryStrategyId);
+      const entryIdLabel =
+        regimeState.entryStrategyId != null ? String(regimeState.entryStrategyId) : "-";
       const entryLabel = entryMeta
-        ? `${entryMeta.id} - ${entryMeta.name}`
-        : regimeState.entryStrategyId != null
-          ? String(regimeState.entryStrategyId)
-          : "-";
+        ? formatEntryLabel(entryMeta, entryIdLabel)
+        : entryIdLabel || "-";
       const exitMeta = resolveExitPresetMeta(regimeState.exitPresetId);
       const exitIdLabel =
         regimeState.exitPresetId != null ? String(regimeState.exitPresetId) : null;
       const exitLabel = exitMeta
-        ? `${exitIdLabel || exitMeta.id} - ${exitMeta.name}`
+        ? formatExitLabel(exitMeta, exitIdLabel)
         : exitIdLabel || "-";
 
       if (autoStrategyEls.regime) autoStrategyEls.regime.textContent = appliedRegime;
@@ -2172,7 +2228,11 @@
       }
       if (autoStrategyEls.reason) {
         const note = isNoTrade ? "No trade allowed" : regimeExplanation(appliedRegime);
-        autoStrategyEls.reason.textContent = blockReason ? `${note} - ${blockReason}` : note;
+        const parts = [note];
+        if (selectionNote) parts.push(selectionNote);
+        if (checkSummary) parts.push(`Checks: ${checkSummary}`);
+        if (blockReason) parts.push(`Reason: ${blockReason}`);
+        autoStrategyEls.reason.textContent = parts.join(" | ");
       }
 
       if (exitAutoEls.preset) exitAutoEls.preset.textContent = exitLabel;
@@ -2185,7 +2245,12 @@
 
       if (entryTabAutoEls.regime) entryTabAutoEls.regime.textContent = appliedRegime;
       if (entryTabAutoEls.strategy) entryTabAutoEls.strategy.textContent = entryLabel;
-      if (entryTabAutoEls.explanation) entryTabAutoEls.explanation.textContent = regimeExplanation(appliedRegime);
+      if (entryTabAutoEls.explanation) {
+        const parts = [regimeExplanation(appliedRegime)];
+        if (selectionNote) parts.push(selectionNote);
+        if (checkSummary) parts.push(`Checks: ${checkSummary}`);
+        entryTabAutoEls.explanation.textContent = parts.join(" | ");
+      }
     }
 
     function escapeHtml(str) {
@@ -2397,10 +2462,18 @@
 
     function loadExitPresets(defaults) {
       const overrides = loadExitPresetOverrides();
+      const mappedOverrides = { ...overrides };
+      Object.keys(EXIT_PRESET_ALIAS_MAP).forEach((legacyId) => {
+        const mappedId = EXIT_PRESET_ALIAS_MAP[legacyId];
+        if (overrides[legacyId] && !mappedOverrides[mappedId]) {
+          mappedOverrides[mappedId] = overrides[legacyId];
+        }
+      });
       return defaults.map((preset) => ({
         ...preset,
-        ...(overrides[preset.id] || {}),
+        ...(mappedOverrides[preset.id] || {}),
       }));
+    }));
     }
 
     let entryExitPairs = loadStoredJson(ENTRY_EXIT_PAIR_KEY, {});
@@ -2667,7 +2740,10 @@
     }
 
     function getExitPresetById(id) {
-      return exitPresets.find((preset) => preset.id === id);
+      const numeric = Number(id);
+      if (!Number.isFinite(numeric)) return null;
+      const mapped = EXIT_PRESET_ALIAS_MAP[numeric] || numeric;
+      return exitPresets.find((preset) => preset.id === mapped) || null;
     }
 
     function getEntryExitPair(entryId) {
@@ -2697,13 +2773,18 @@
 
     function describeStrategy(id) {
       const meta = getEntryStrategyById(id);
-      return meta ? `${meta.id} – ${meta.name}` : `ID ${id}`;
+      const displayId = meta?.displayId ?? meta?.id;
+      return meta ? `${displayId} - ${meta.name}` : `ID ${id}`;
     }
 
     function buildExitPresetOptions(selectedId) {
       const options = ['<option value="">No preset</option>'];
+      const numeric = Number(selectedId);
+      const normalizedSelected = Number.isFinite(numeric)
+        ? EXIT_PRESET_ALIAS_MAP[numeric] || numeric
+        : null;
       exitPresets.forEach((preset) => {
-        const selected = preset.id === selectedId ? "selected" : "";
+        const selected = preset.id === normalizedSelected ? "selected" : "";
         options.push(
           `<option value="${preset.id}" ${selected}>${escapeHtml(
             formatExitPresetLabel(preset)
@@ -2716,6 +2797,10 @@
     function renderExitPresetOptions() {
       if (!exitPresetSelectEl) return;
       const current = exitPresetSelectEl.value;
+      const numeric = Number(current);
+      const normalized = Number.isFinite(numeric)
+        ? EXIT_PRESET_ALIAS_MAP[numeric] || numeric
+        : null;
       exitPresetSelectEl.innerHTML = '<option value="" selected disabled>Select exit preset...</option>';
       exitPresets.forEach((preset) => {
         const opt = document.createElement("option");
@@ -2723,25 +2808,27 @@
         opt.textContent = formatExitPresetLabel(preset);
         exitPresetSelectEl.appendChild(opt);
       });
-      if (current) {
-        exitPresetSelectEl.value = current;
+      if (normalized) {
+        exitPresetSelectEl.value = String(normalized);
       }
+    }
     }
 
     function renderEntryStrategyOptions() {
       if (!entryStrategySelectEl) return;
       entryStrategySelectEl.innerHTML = '<option value="" disabled selected>Select entry strategy...</option>';
-      entryStrategies.forEach((s) => {
+      entryStrategiesOfficial.forEach((s) => {
         const opt = document.createElement("option");
+        const displayId = s.displayId != null ? s.displayId : s.id;
         opt.value = s.id;
-        opt.textContent = `${s.id} – ${s.name}`;
+        opt.textContent = `${displayId} - ${s.name}`;
         entryStrategySelectEl.appendChild(opt);
       });
     }
 
     function renderEntryStrategyTable() {
       if (!strategyTableBodyEl) return;
-      const rows = entryStrategies.map((s) => {
+      const rows = entryStrategiesOfficial.map((s) => {
         const disabledAttr = isAutoMode() ? "disabled" : "";
         const params = s.parameters
           .map((p) => `<div><strong>${p.label}:</strong> ${p.value}</div>`)
@@ -2757,12 +2844,13 @@
             </button>
           </div>
         `;
+        const displayId = s.displayId != null ? s.displayId : s.id;
         return `
           <tr>
-            <td>${s.id}</td>
+            <td>${displayId}</td>
             <td>${escapeHtml(s.name)}</td>
             <td><div><strong>Purpose:</strong> ${escapeHtml(s.purpose)}</div><div><strong>Behavior:</strong> ${escapeHtml(s.behavior)}</div></td>
-            <td>${escapeHtml(s.logicGroup || "—")}</td>
+            <td>${escapeHtml(s.logicGroup || "-")}</td>
             <td>${pairingSelect}</td>
             <td>${params}</td>
           </tr>
@@ -2771,7 +2859,24 @@
       strategyTableBodyEl.innerHTML = rows.join("");
     }
 
-    function renderExitPresetTable() {
+    function renderLegacyEntryStrategyTable() {
+      if (!legacyStrategyTableBodyEl) return;
+      const rows = entryStrategiesLegacy.map((s) => {
+        const displayId = s.displayId != null ? s.displayId : s.id;
+        const mapped = LEGACY_ENTRY_MAP[s.id] || "Entry 1-5";
+        return `
+          <tr>
+            <td>${displayId}</td>
+            <td>${escapeHtml(s.name)}</td>
+            <td>${escapeHtml(s.purpose)}</td>
+            <td>${escapeHtml(mapped)}</td>
+          </tr>
+        `;
+      });
+      legacyStrategyTableBodyEl.innerHTML = rows.join("");
+    }
+
+function renderExitPresetTable() {
       if (!exitStrategyTableBodyEl) return;
       const rows = exitPresets.map((preset) => {
         const disabledAttr = isAutoMode() ? "disabled" : "";
@@ -2818,6 +2923,22 @@
       });
       exitStrategyTableBodyEl.innerHTML = rows.join("");
     }
+function renderLegacyExitPresetTable() {
+      if (!legacyExitPresetBodyEl) return;
+      const rows = legacyExitPresets.map((preset) => {
+        const mappedPreset = getExitPresetById(preset.id);
+        const mappedLabel = mappedPreset ? mappedPreset.order : "-";
+        return `
+          <tr>
+            <td>${preset.id}</td>
+            <td>${escapeHtml(preset.name)}</td>
+            <td>${escapeHtml(String(mappedLabel))}</td>
+          </tr>
+        `;
+      });
+      legacyExitPresetBodyEl.innerHTML = rows.join("");
+    }
+
 
     function readExitPresetInputs(row) {
       const values = {};
@@ -2862,11 +2983,25 @@
 
     function updateStrategyUiFromStatus(activeId) {
       const meta = getEntryStrategyById(activeId);
-      const label = meta ? `${meta.id} – ${meta.name}` : activeId ?? "–";
-      statusEls.strategy.textContent = label || "–";
+      const displayId = meta?.displayId ?? meta?.id;
+      const label = meta ? `${displayId} - ${meta.name}` : activeId ?? "-";
+      statusEls.strategy.textContent = label || "-";
       if (entryStrategySelectEl) {
         entryStrategySelectEl.value = meta ? String(meta.id) : "";
       }
+      if (meta) {
+        const pairedExitId = getEntryExitPair(meta.id);
+        const pairedPreset = pairedExitId ? getExitPresetById(pairedExitId) : null;
+        const pairedExit = pairedPreset
+          ? ` | Suggested Exit: ${formatExitPresetLabel(pairedPreset)}`
+          : "";
+        strategyStatusEl.textContent = `Entry Strategy: ${displayId} - ${meta.name}${pairedExit}`;
+      } else if (activeId != null) {
+        strategyStatusEl.textContent = `Entry Strategy: ${activeId}`;
+      } else {
+        strategyStatusEl.textContent = "Select an entry strategy to send it live.";
+      }
+    }
       if (meta) {
         const pairedExitId = getEntryExitPair(meta.id);
         const pairedPreset = pairedExitId ? getExitPresetById(pairedExitId) : null;
@@ -3615,7 +3750,9 @@
     renderExitPresetOptions();
     renderEntryStrategyOptions();
     renderEntryStrategyTable();
+    renderLegacyEntryStrategyTable();
     renderExitPresetTable();
+    renderLegacyExitPresetTable();
 
     logFileSelectEl.addEventListener("change", () => {
       selectedLogFile = logFileSelectEl.value;

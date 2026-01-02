@@ -62,7 +62,7 @@ function buildRegimeSettings(input = {}) {
     RSI_RANGE_MAX: numberOr(input.RSI_RANGE_MAX, 55, 0),
     ATR_RATIO_RANGE_MAX: numberOr(input.ATR_RATIO_RANGE_MAX, 1.05, 0),
     STRATEGY_PACKS: {
-      TREND: parsePack(packs.TREND, 101, 4),
+      TREND: parsePack(packs.TREND, 101, 1),
       RANGE: parsePack(packs.RANGE, 103, 3),
       BREAKOUT: parsePack(packs.BREAKOUT, 105, 7),
     },

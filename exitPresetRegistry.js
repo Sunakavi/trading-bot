@@ -8,18 +8,9 @@ const DEFAULT_EXIT_PRESETS = {
     trailDistance: 0.6,
     candleRed: 60,
   },
-  2: {
-    id: 2,
-    name: "Aggressive Trend",
-    sl: 0.9,
-    tp: 3.2,
-    trailStart: 1.6,
-    trailDistance: 0.8,
-    candleRed: 40,
-  },
   3: {
     id: 3,
-    name: "Safe Scalping",
+    name: "Scalping",
     sl: 0.6,
     tp: 1.2,
     trailStart: 0.8,
@@ -28,21 +19,12 @@ const DEFAULT_EXIT_PRESETS = {
   },
   4: {
     id: 4,
-    name: "Momentum Rider",
+    name: "Trend Rider",
     sl: 1.0,
     tp: 4.0,
     trailStart: 2.0,
     trailDistance: 1.0,
     candleRed: 30,
-  },
-  5: {
-    id: 5,
-    name: "ATR Mixed (semi-dynamic)",
-    sl: 0.6,
-    tp: 1.4,
-    trailStart: 2.0,
-    trailDistance: 1.0,
-    candleRed: 40,
   },
   6: {
     id: 6,
@@ -55,27 +37,30 @@ const DEFAULT_EXIT_PRESETS = {
   },
   7: {
     id: 7,
-    name: "Breakout Mode",
+    name: "Breakout",
     sl: 0.8,
     tp: 5.0,
     trailStart: 3.0,
     trailDistance: 1.5,
     candleRed: 20,
   },
-  8: {
-    id: 8,
-    name: "Ultra Tight",
-    sl: 0.4,
-    tp: 0.8,
-    trailStart: 0.6,
-    trailDistance: 0.3,
-    candleRed: 35,
-  },
+};
+
+const EXIT_PRESET_ALIASES = {
+  1: 1,
+  2: 4,
+  4: 4,
+  5: 6,
+  3: 3,
+  6: 6,
+  7: 7,
+  8: 3,
 };
 
 function normalizeExitPresetId(id) {
   const numeric = Number(id);
-  return Number.isFinite(numeric) ? numeric : null;
+  if (!Number.isFinite(numeric)) return null;
+  return EXIT_PRESET_ALIASES[numeric] || null;
 }
 
 function getExitPresetById(id) {

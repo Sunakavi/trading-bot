@@ -82,79 +82,312 @@ function checkEntryGoldenCross(closes, maFastPeriod, maSlowPeriod, logFn = log) 
 // STRATEGY 2: TREND/PULLBACK/RSI (Your Original Logic)
 // =========================================================
 
-function checkEntryTrendPullback(
-  candles,
-  closes,
-  maFast,
-  maSlow,
-  rsi,
-  config,
-  logFn = log
-) {
+
+function calcAtrMa(candles, atrPeriod, atrMaPeriod) {
+  if (!candles || candles.length < atrPeriod + atrMaPeriod) return null;
+  const values = [];
+  const start = candles.length - atrMaPeriod;
+  for (let i = start; i < candles.length; i++) {
+    const slice = candles.slice(0, i + 1);
+    const atr = calcATR(slice, atrPeriod);
+    if (Number.isFinite(atr)) values.push(atr);
+  }
+  return values.length ? calcSMA(values, values.length) : null;
+}
+
+function checkEntryTrendPullback(candles, settings, logFn = log) {
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
-  
+  if (!last || !prev) return false;
+
+  const closes = candles.map((c) => c.close);
+  const maFast = calcSMA(closes, settings.maFastPeriod);
+  const maSlow = calcSMA(closes, settings.maSlowPeriod);
+  const rsi = calcRSI(closes, settings.rsiPeriod);
+
+  if (!maFast || !maSlow || rsi === null) return false;
+
   // Trend Filter
   const trendUp = maFast > maSlow && last.close > maSlow;
 
-  // Pullback Filter – מותאם ל-15m
-  const pullback =
-    prev.low < maFast * 1.008 &&   // עד ~0.8% מתחת ל-MA
-    last.close > maFast * 0.996;   // חזרה לסגור קרוב ל-MA (עד ~0.4% מתחת
+  // Pullback band around the fast MA.
+  const pullbackPct = ((maFast - prev.low) / maFast) * 100;
+  const pullbackBandOk =
+    pullbackPct >= settings.pullbackMinPct &&
+    pullbackPct <= settings.pullbackMaxPct;
+  const reclaimOk = last.close >= maFast * (1 - settings.pullbackMinPct / 100);
+  const pullbackOk = pullbackBandOk && reclaimOk;
 
   // RSI Filter
-  const rsiOk =
-    rsi !== null && rsi >= config.RSI_MIN && rsi <= config.RSI_MAX;
+  const rsiOk = rsi >= settings.rsiMin && rsi <= settings.rsiMax;
 
   // Candle Pattern
-  const candleOk =
-    isBullishEngulfing(prev, last) || isBullishHammer(last);
+  const candleOk = isBullishEngulfing(prev, last) || isBullishHammer(last);
+
+  // ATR Filter
+  let atrOk = true;
+  if (settings.atrFilterEnabled) {
+    const atr = calcATR(candles, settings.atrPeriod);
+    const atrMa = calcAtrMa(candles, settings.atrPeriod, settings.atrMaPeriod);
+    atrOk = Boolean(atr && atrMa && atr >= atrMa * settings.atrMinRatio);
+  }
+
+  // Volume Surge Filter
+  let volumeOk = true;
+  if (settings.volumeMultiplier) {
+    const volMa = calcVolumeMA(candles, settings.volumeMaPeriod);
+    volumeOk = Boolean(volMa && last.volume >= settings.volumeMultiplier * volMa);
+  }
 
   const isEntryConditionMet =
     trendUp &&
-    pullback &&
+    pullbackOk &&
     rsiOk &&
-    (config.REQUIRE_CANDLE_PATTERN ? candleOk : true);
-    
+    atrOk &&
+    volumeOk &&
+    (settings.requireCandlePattern ? candleOk : true);
+
   logFn(
-    `[Entry 2 Check] Trend=${trendUp}, Pullback=${pullback}, RSI=${rsi?.toFixed(0) || "N/A"}`
+    `[Entry 2 Check] Trend=${trendUp}, Pullback=${pullbackOk}, RSI=${rsi.toFixed(
+      0
+    )}, ATR=${atrOk}, Vol=${volumeOk}`
   );
-    
+
   return isEntryConditionMet;
 }
+
 
 // =========================================================
 // STRATEGY 3: EMA 9/21 with Volatility Filter
 // =========================================================
 
-function checkEntryEmaVolume(candles, config, logFn = log) {
+function checkEntryEmaVolume(candles, settings, logFn = log) {
   const last = candles[candles.length - 1];
-  const closes = candles.map(c => c.close);
-  
-  // Note: We are using periods 9 and 21 for this strategy
-  const EMA9 = calcEMA(closes, 9);
-  const EMA21 = calcEMA(closes, 21);
-  const prevEMA9 = calcEMA(closes.slice(0, -1), 9);
-  const prevEMA21 = calcEMA(closes.slice(0, -1), 21);
-  const ATR = calcATR(candles, 14);
+  const closes = candles.map((c) => c.close);
 
-  if (!EMA9 || !EMA21 || !prevEMA9 || !prevEMA21 || !ATR) return false;
-  
+  const EMAFast = calcEMA(closes, settings.emaFast);
+  const EMASlow = calcEMA(closes, settings.emaSlow);
+  const prevEMAFast = calcEMA(closes.slice(0, -1), settings.emaFast);
+  const prevEMASlow = calcEMA(closes.slice(0, -1), settings.emaSlow);
+  const ATR = calcATR(candles, settings.atrPeriod);
+  const rsi = calcRSI(closes, settings.rsiPeriod);
+
+  if (!EMAFast || !EMASlow || !prevEMAFast || !prevEMASlow || !ATR || rsi === null) {
+    return false;
+  }
+
   // 1. Crossover: EMA 9 crosses above EMA 21
-  const isCrossover = prevEMA9 <= prevEMA21 && EMA9 > EMA21;
-  
+  const isCrossover = prevEMAFast <= prevEMASlow && EMAFast > EMASlow;
+
   // 2. Trend: Price is above the EMA 21
-  const isAboveEMA = last.close > EMA21;
-  
+  const isAboveEMA = last.close > EMASlow;
+
   // 3. Volatility Filter: Ensure current candle size is meaningful (e.g., body > 0.5 * ATR)
   const lastBody = Math.abs(last.close - last.open);
-  const volatilityOk = lastBody > 0.7 * ATR; 
-  
+  const volatilityOk = lastBody > settings.bodyAtrMult * ATR;
+
+  const rsiOk = rsi >= settings.rsiMin && rsi <= settings.rsiMax;
+
+  let volumeOk = true;
+  if (settings.volumeMultiplier) {
+    const volMa = calcVolumeMA(candles, settings.volumeMaPeriod);
+    volumeOk = Boolean(volMa && last.volume >= settings.volumeMultiplier * volMa);
+  }
+
   logFn(
-    `[Entry 3 Check] Cross=${isCrossover}, AboveEMA=${isAboveEMA}, Volatility=${volatilityOk} (ATR=${ATR.toFixed(4)})`
+    `[Entry 3 Check] Cross=${isCrossover}, AboveEMA=${isAboveEMA}, Volatility=${volatilityOk} (ATR=${ATR.toFixed(
+      4
+    )}) RSI=${rsi.toFixed(0)} Vol=${volumeOk}`
   );
-  
-  return isCrossover && isAboveEMA && volatilityOk;
+
+  return (
+    isCrossover &&
+    (settings.requireAboveEma ? isAboveEMA : true) &&
+    volatilityOk &&
+    rsiOk &&
+    volumeOk
+  );
+}
+
+
+
+const ENTRY_PRESET_DEFS = {
+  TREND_CONSERVATIVE: {
+    name: "Trend Conservative",
+    displayId: 1,
+    type: "trendPullback",
+    settings: {
+      maFastPeriod: 20,
+      maSlowPeriod: 200,
+      pullbackMinPct: 1.0,
+      pullbackMaxPct: 2.0,
+      rsiPeriod: 14,
+      rsiMin: 50,
+      rsiMax: 60,
+      requireCandlePattern: true,
+      atrFilterEnabled: true,
+      atrPeriod: 14,
+      atrMaPeriod: 14,
+      atrMinRatio: 0.7,
+      volumeMultiplier: 0,
+      volumeMaPeriod: 10,
+    },
+  },
+  TREND_AGGRESSIVE: {
+    name: "Trend Aggressive",
+    displayId: 2,
+    type: "trendPullback",
+    settings: {
+      maFastPeriod: 10,
+      maSlowPeriod: 50,
+      pullbackMinPct: 2.5,
+      pullbackMaxPct: 4.0,
+      rsiPeriod: 14,
+      rsiMin: 55,
+      rsiMax: 70,
+      requireCandlePattern: false,
+      atrFilterEnabled: false,
+      atrPeriod: 14,
+      atrMaPeriod: 14,
+      atrMinRatio: 0.7,
+      volumeMultiplier: 1.2,
+      volumeMaPeriod: 10,
+    },
+  },
+  SWING_DEEP_PULLBACK: {
+    name: "Swing Deep Pullback",
+    displayId: 3,
+    type: "trendPullback",
+    settings: {
+      maFastPeriod: 50,
+      maSlowPeriod: 200,
+      pullbackMinPct: 3.0,
+      pullbackMaxPct: 6.0,
+      rsiPeriod: 14,
+      rsiMin: 28,
+      rsiMax: 40,
+      requireCandlePattern: false,
+      atrFilterEnabled: true,
+      atrPeriod: 14,
+      atrMaPeriod: 14,
+      atrMinRatio: 0.7,
+      volumeMultiplier: 0,
+      volumeMaPeriod: 10,
+    },
+  },
+  BREAKOUT: {
+    name: "Breakout",
+    displayId: 4,
+    type: "breakout",
+    settings: {
+      emaPeriod: 20,
+      rsiPeriod: 14,
+      rsiMin: 60,
+      rsiMax: 80,
+      breakoutLookback: 20,
+      volumeMultiplier: 1.3,
+      volumeMaPeriod: 10,
+    },
+  },
+  SCALPING: {
+    name: "Scalping / Micro-Momentum",
+    displayId: 5,
+    type: "emaMomentum",
+    settings: {
+      emaFast: 9,
+      emaSlow: 21,
+      atrPeriod: 14,
+      bodyAtrMult: 0.7,
+      rsiPeriod: 14,
+      rsiMin: 45,
+      rsiMax: 55,
+      requireAboveEma: true,
+      volumeMultiplier: 1.1,
+      volumeMaPeriod: 10,
+    },
+  },
+};
+
+const ENTRY_PRESET_CANONICAL_IDS = {
+  101: "TREND_CONSERVATIVE",
+  102: "TREND_AGGRESSIVE",
+  104: "SWING_DEEP_PULLBACK",
+  105: "BREAKOUT",
+  103: "SCALPING",
+};
+
+const ENTRY_PRESET_ALIASES = {
+  2: 101,
+  101: 101,
+  102: 102,
+  104: 104,
+  105: 105,
+  3: 103,
+  103: 103,
+  106: 103,
+  107: 102,
+  108: 103,
+};
+
+function resolveEntryPresetKey(strategyId) {
+  const mapped = ENTRY_PRESET_ALIASES[Number(strategyId)];
+  return mapped ? ENTRY_PRESET_CANONICAL_IDS[mapped] : null;
+}
+
+function calcEntryMinCandles(preset) {
+  const settings = preset.settings || {};
+  if (preset.type === "trendPullback") {
+    return Math.max(
+      settings.maSlowPeriod || 0,
+      (settings.rsiPeriod || 0) + 1,
+      (settings.atrPeriod || 0) + (settings.atrMaPeriod || 0),
+      settings.volumeMaPeriod || 0,
+      2
+    );
+  }
+  if (preset.type === "emaMomentum") {
+    return Math.max(
+      settings.emaSlow || 0,
+      (settings.rsiPeriod || 0) + 1,
+      (settings.atrPeriod || 0) + 1,
+      settings.volumeMaPeriod || 0,
+      2
+    );
+  }
+  if (preset.type === "breakout") {
+    return Math.max(
+      settings.breakoutLookback || 0,
+      settings.emaPeriod || 0,
+      (settings.rsiPeriod || 0) + 1,
+      settings.volumeMaPeriod || 0,
+      2
+    );
+  }
+  return 0;
+}
+
+function resolveCryptoEntryPreset(strategyId, config) {
+  if (!Number.isFinite(Number(strategyId))) return null;
+  if (Number(strategyId) === 1) {
+    const maFastPeriod = config.FAST_MA;
+    const maSlowPeriod = config.SLOW_MA;
+    return {
+      name: "Legacy Golden Cross",
+      displayId: "L1",
+      type: "goldenCross",
+      settings: { maFastPeriod, maSlowPeriod },
+      minCandles: Math.max(maFastPeriod, maSlowPeriod),
+    };
+  }
+
+  const key = resolveEntryPresetKey(strategyId);
+  if (!key) return null;
+  const preset = ENTRY_PRESET_DEFS[key];
+  return {
+    ...preset,
+    settings: { ...preset.settings },
+    minCandles: calcEntryMinCandles(preset),
+  };
 }
 
 function evaluateCoreEntry(candles, preset, logFn = log) {
@@ -291,6 +524,7 @@ async function runSymbolStrategy(
       Number(options.strategyId) || Number(activeStrategyId) || 2;
     const entryPresetId = options.entryPresetId || null;
     const entryPreset = options.entryPreset || null;
+    const entryPlan = !entryPreset ? resolveCryptoEntryPreset(entryStrategyId, config) : null;
     const exitPresetId = options.exitPresetId || null;
     const exitPreset = options.exitPreset || null;
     const timeframe = options.timeframe || config.INTERVAL;
@@ -320,9 +554,9 @@ async function runSymbolStrategy(
     const candles = dataProvider.getBars
       ? await dataProvider.getBars(symbol, timeframe, config.KLINES_LIMIT)
       : await dataProvider.fetchKlines(symbol, timeframe, config.KLINES_LIMIT);
-
+    const entryMinCandles = entryPlan ? entryPlan.minCandles : config.SLOW_MA;
     const minRequired = Math.max(
-      config.SLOW_MA,
+      entryMinCandles,
       entryPreset?.emaSlow || 0,
       entryPreset?.emaFast || 0,
       entryPreset?.emaPeriod || 0,
@@ -358,11 +592,6 @@ async function runSymbolStrategy(
       };
       return;
     }
-
-    // Calculate TAs needed for multiple strategies
-    const maFast = calcSMA(closes, config.FAST_MA);
-    const maSlow = calcSMA(closes, config.SLOW_MA);
-    const rsi = calcRSI(closes, config.RSI_PERIOD);
 
     // Get current position state
     const pos = positions[symbol] || {
@@ -431,48 +660,49 @@ async function runSymbolStrategy(
         isEntryConditionMet = result.enter;
         entryBreakoutLevel = result.breakoutLevel;
       }
-    } else {
-      switch (entryStrategyId) {
-        case 1:
+    } else if (entryPlan) {
+      switch (entryPlan.type) {
+        case "goldenCross":
           isEntryConditionMet = checkEntryGoldenCross(
             closes,
-            config.FAST_MA,
-            config.SLOW_MA,
+            entryPlan.settings.maFastPeriod,
+            entryPlan.settings.maSlowPeriod,
             logger
           );
           break;
-        case 2:
-        case 101: // Conservative Trend Entry
-        case 102: // Aggressive Trend Entry
-        case 104: // Deep Pullback Entry
-        case 107: // MA Slope Entry
+        case "trendPullback":
           isEntryConditionMet = checkEntryTrendPullback(
             candles,
-            closes,
-            maFast,
-            maSlow,
-            rsi,
-            config,
+            entryPlan.settings,
             logger
           );
           break;
-        case 3:
-        case 103: // Scalping Mode
-        case 105: // Breakout Entry
-        case 106: // Volatility Adaptive Entry (ATR-Based)
-        case 108: // EMA + ATR Core (Enhanced Version)
-          isEntryConditionMet = checkEntryEmaVolume(candles, config, logger);
+        case "emaMomentum":
+          isEntryConditionMet = checkEntryEmaVolume(candles, entryPlan.settings, logger);
           break;
+        case "breakout": {
+          const result = evaluateAggressiveEntry(candles, entryPlan.settings, logger);
+          isEntryConditionMet = result.enter;
+          entryBreakoutLevel = result.breakoutLevel;
+          break;
+        }
         default:
           log(
             COLORS.RED +
-              `[${symbol}] Invalid Strategy ID: ${entryStrategyId}` +
+              `[${symbol}] Invalid entry preset type: ${entryPlan.type}` +
               COLORS.RESET
           );
           return;
       }
+    } else {
+      log(
+        COLORS.RED +
+          `[${symbol}] Invalid Strategy ID: ${entryStrategyId}` +
+          COLORS.RESET
+      );
+      return;
     }
-    
+
     // 3. Execute BUY if conditions are met and no position is open
     if (!pos.hasPosition && isEntryConditionMet) {
       log(

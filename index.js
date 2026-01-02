@@ -225,6 +225,87 @@ function formatRegimePercent(value, digits = 2) {
   return Number.isFinite(value) ? `${value.toFixed(digits)}%` : "n/a";
 }
 
+const ENTRY_PRESET_IDS = {
+  TREND_CONSERVATIVE: 101,
+  TREND_AGGRESSIVE: 102,
+  SWING_PULLBACK: 104,
+  BREAKOUT: 105,
+  SCALPING: 103,
+};
+
+function pickRegimeStrategyPack(detection) {
+  const cfg = detection?.config || {};
+  const metrics = detection?.metrics || {};
+  const regime = detection?.regime;
+  const packs = cfg.STRATEGY_PACKS || {};
+
+  const trendPack = packs.TREND || {
+    entryStrategyId: ENTRY_PRESET_IDS.TREND_CONSERVATIVE,
+    exitPresetId: 1,
+  };
+  const rangePack = packs.RANGE || {
+    entryStrategyId: ENTRY_PRESET_IDS.SCALPING,
+    exitPresetId: 3,
+  };
+  const breakoutPack = packs.BREAKOUT || {
+    entryStrategyId: ENTRY_PRESET_IDS.BREAKOUT,
+    exitPresetId: 7,
+  };
+
+  if (regime === "BREAKOUT") {
+    return { ...breakoutPack, selection: "BREAKOUT" };
+  }
+
+  if (regime === "TREND") {
+    const slope = Number(metrics.slopePct);
+    const atrRatio = Number(metrics.atrRatio);
+    const rsi = Number(metrics.rsi);
+    const trendStrong =
+      Number.isFinite(slope) && slope >= Number(cfg.SLOPE_TREND_MIN || 0) * 2;
+    const atrStrong =
+      Number.isFinite(atrRatio) &&
+      atrRatio >= Number(cfg.ATR_RATIO_TREND_MAX || 0);
+    const pullbackWindow =
+      Number.isFinite(rsi) &&
+      rsi <= Number(cfg.RSI_TREND_MIN || 0) + 2;
+
+    if (pullbackWindow) {
+      return {
+        entryStrategyId: ENTRY_PRESET_IDS.SWING_PULLBACK,
+        exitPresetId: 6,
+        selection: "PULLBACK_OPPORTUNITY",
+      };
+    }
+    if (trendStrong || atrStrong) {
+      return {
+        entryStrategyId: ENTRY_PRESET_IDS.TREND_AGGRESSIVE,
+        exitPresetId: 4,
+        selection: "TREND_STRONG",
+      };
+    }
+
+    return { ...trendPack, selection: "TREND_STABLE" };
+  }
+
+  if (regime === "RANGE") {
+    const atrRatio = Number(metrics.atrRatio);
+    const rangeMax = Number(cfg.ATR_RATIO_RANGE_MAX || 0);
+    const lowVol = Number.isFinite(atrRatio) && atrRatio <= rangeMax * 0.9;
+    if (lowVol) {
+      return { ...rangePack, selection: "RANGE_LOW_VOL" };
+    }
+    return {
+      blockReason: "range volatility too high",
+      selection: "RANGE_HIGH_VOL",
+    };
+  }
+
+  return {
+    blockReason: detection?.reason || "no trade",
+    selection: "NO_TRADE",
+  };
+}
+
 function describeExitPreset(exitPresetId) {
   const preset = getExitPresetById(exitPresetId);
   if (!preset) return exitPresetId != null ? String(exitPresetId) : "n/a";
@@ -687,20 +768,23 @@ async function runMarketLoop(market) {
 
       const appliedRegime = lock.currentRegime;
       const mode = detection.config.MODE;
-      const pack = detection.config.STRATEGY_PACKS?.[appliedRegime] || null;
+      const pack = pickRegimeStrategyPack(detection);
       let blockReason = null;
-
       if (mode === "AUTO") {
-        if (appliedRegime === "NO_TRADE") {
+        if (appliedRegime === "NO_TRADE" || pack?.blockReason) {
           allowEntriesByRegime = false;
-          blockReason = detection.reason || "no trade";
-        } else if (pack) {
+          blockReason = pack?.blockReason || detection.reason || "no trade";
+        } else if (pack?.entryStrategyId && pack?.exitPresetId) {
           entryStrategyId = pack.entryStrategyId;
           selectedExitPresetId = pack.exitPresetId;
         } else {
           allowEntriesByRegime = false;
           blockReason = "strategy pack missing";
         }
+
+        runtimeConfig.activeStrategyId = entryStrategyId;
+        marketShared.activeStrategyId = entryStrategyId;
+      }
 
         runtimeConfig.activeStrategyId = entryStrategyId;
         marketShared.activeStrategyId = entryStrategyId;
@@ -733,6 +817,8 @@ async function runMarketLoop(market) {
         mode,
         reason: detection.reason,
         blockReason,
+        selection: pack?.selection || null,
+        checks: detection.checks || {},
         metrics: detection.metrics || {},
         proxySymbol: detection.config.REGIME_PROXY_SYMBOL,
         timeframe: detection.config.TIMEFRAME,
