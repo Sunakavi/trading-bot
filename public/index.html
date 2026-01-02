@@ -3000,19 +3000,6 @@ function renderLegacyExitPresetTable() {
         strategyStatusEl.textContent = "Select an entry strategy to send it live.";
       }
     }
-      if (meta) {
-        const pairedExitId = getEntryExitPair(meta.id);
-        const pairedPreset = pairedExitId ? getExitPresetById(pairedExitId) : null;
-        const pairedExit = pairedPreset
-          ? ` • Suggested Exit: ${formatExitPresetLabel(pairedPreset)}`
-          : "";
-        strategyStatusEl.textContent = `Entry Strategy: ${meta.id} – ${meta.name}${pairedExit}`;
-      } else if (activeId != null) {
-        strategyStatusEl.textContent = `Entry Strategy: ${activeId}`;
-      } else {
-        strategyStatusEl.textContent = "Select an entry strategy to send it live.";
-      }
-    }
 
     function updateSummaryGroup(key, stats) {
       const cfg = summaryConfig[key];
