@@ -424,6 +424,217 @@
       font-weight: 700;
     }
 
+    .log-container {
+      white-space: normal;
+    }
+
+    .log-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      background: #0b0f1b;
+      margin-bottom: 8px;
+    }
+
+    .log-toolbar-left {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      flex: 1 1 auto;
+    }
+
+    .log-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .log-search {
+      width: 220px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #111827;
+      color: #e5e7eb;
+      font-size: 12px;
+    }
+
+    .log-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #cbd5f5;
+      background: #111827;
+      border: 1px solid #1f2937;
+      padding: 4px 8px;
+      border-radius: 999px;
+    }
+
+    .log-toggle input {
+      accent-color: #38bdf8;
+    }
+
+    .log-auto-status {
+      font-size: 12px;
+      color: #9ca3af;
+      border: 1px solid #1f2937;
+      background: #111827;
+      padding: 4px 8px;
+      border-radius: 999px;
+    }
+
+    .log-table-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #0b0f1b;
+      border-bottom: 1px solid #1f2937;
+      padding: 6px 0;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #9ca3af;
+    }
+
+    .log-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .log-row {
+      display: grid;
+      grid-template-columns: 70px 80px 120px 140px 1fr;
+      gap: 8px;
+      padding: 4px 0;
+      align-items: center;
+    }
+
+    .log-row.error {
+      background: rgba(185, 28, 28, 0.14);
+    }
+
+    .log-row.section {
+      font-weight: 700;
+      border-bottom: 1px solid rgba(59, 130, 246, 0.4);
+      padding-bottom: 6px;
+      margin-bottom: 4px;
+    }
+
+    .log-col {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .log-message {
+      white-space: normal;
+      overflow: visible;
+    }
+
+    .log-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .log-badge-buy {
+      background: #064e3b;
+      color: #6ee7b7;
+      border-color: #10b981;
+    }
+
+    .log-badge-exit {
+      background: #3b0764;
+      color: #e9d5ff;
+      border-color: #a855f7;
+    }
+
+    .log-badge-tp {
+      background: #0e7490;
+      color: #a5f3fc;
+      border-color: #22d3ee;
+    }
+
+    .log-badge-sl {
+      background: #7c2d12;
+      color: #fed7aa;
+      border-color: #fb923c;
+    }
+
+    .log-badge-error {
+      background: #7f1d1d;
+      color: #fecaca;
+      border-color: #ef4444;
+    }
+
+    .log-badge-muted {
+      background: #111827;
+      color: #9ca3af;
+      border-color: #4b5563;
+    }
+
+    .log-badge-blue {
+      background: #1e3a8a;
+      color: #bfdbfe;
+      border-color: #60a5fa;
+    }
+
+    .log-divider {
+      height: 1px;
+      background: linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(148, 163, 184, 0.5), rgba(148, 163, 184, 0.1));
+      margin: 6px 0;
+    }
+
+    .log-empty {
+      color: #9ca3af;
+      font-size: 12px;
+      padding: 6px 0;
+    }
+
+    .log-auto-banner {
+      position: sticky;
+      bottom: 8px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #1f2937;
+      padding: 6px 10px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      width: fit-content;
+      color: #e2e8f0;
+      font-size: 12px;
+    }
+
+    .log-auto-banner.is-hidden {
+      display: none;
+    }
+
+    @media (max-width: 900px) {
+      .log-row {
+        grid-template-columns: 60px 60px 90px 100px 1fr;
+      }
+      .log-search {
+        width: 100%;
+      }
+    }
+
     .strategy-table-wrapper {
       margin-top: 12px;
       overflow-x: auto;
@@ -897,9 +1108,47 @@
             <span class="pill" id="logStatusPill">Polling every 5s</span>
           </div>
         </div>
-      <div id="logContainer" class="log-container">
-        Loading logs...
-      </div>
+        <div class="log-toolbar">
+          <div class="log-toolbar-left">
+            <input id="logSearchInput" class="log-search" type="search" placeholder="Search symbol or message..." />
+            <label class="log-toggle">
+              <input id="logToggleHideEntryCheck" type="checkbox" checked />
+              Hide Entry 2 Check
+            </label>
+            <label class="log-toggle">
+              <input id="logToggleSignalsOnly" type="checkbox" />
+              Signals only
+            </label>
+            <label class="log-toggle">
+              <input id="logToggleHidePortfolio" type="checkbox" />
+              Hide Portfolio blocks
+            </label>
+            <label class="log-toggle">
+              <input id="logToggleHidePerfTrades" type="checkbox" />
+              Hide Performance/Trades lines
+            </label>
+          </div>
+          <div class="log-toolbar-right">
+            <span class="log-auto-status" id="logAutoStatus">Auto-scroll: ON</span>
+            <button id="logResumeBtn" class="btn btn-outline btn-small">Resume auto-scroll</button>
+          </div>
+        </div>
+        <div id="logContainer" class="log-container">
+          <div class="log-row log-table-head">
+            <div class="log-col">Time</div>
+            <div class="log-col">Scope</div>
+            <div class="log-col">Badge</div>
+            <div class="log-col">Symbol</div>
+            <div class="log-col">Message</div>
+          </div>
+          <div id="logRows" class="log-rows">
+            <div class="log-empty">Loading logs...</div>
+          </div>
+          <div id="logAutoPaused" class="log-auto-banner is-hidden">
+            <span>Auto-scroll paused (scroll)</span>
+            <button id="logResumeStickyBtn" class="btn btn-outline btn-small">Resume</button>
+          </div>
+        </div>
     </div>
   </div>
 
@@ -1055,11 +1304,21 @@
     const strategyStatusEl = document.getElementById("strategyStatus");
     const intervalStatusEl = document.getElementById("intervalStatus");
     const logContainerEl = document.getElementById("logContainer");
+    const logRowsEl = document.getElementById("logRows");
     const logStatusPillEl = document.getElementById("logStatusPill");
     const logFileSelectEl = document.getElementById("logFileSelect");
     const logRefreshBtn = document.getElementById("logRefreshBtn");
     const logLoadBtn = document.getElementById("logLoadBtn");
     const logDownloadLinkEl = document.getElementById("logDownloadLink");
+    const logSearchInputEl = document.getElementById("logSearchInput");
+    const logToggleHideEntryCheckEl = document.getElementById("logToggleHideEntryCheck");
+    const logToggleSignalsOnlyEl = document.getElementById("logToggleSignalsOnly");
+    const logToggleHidePortfolioEl = document.getElementById("logToggleHidePortfolio");
+    const logToggleHidePerfTradesEl = document.getElementById("logToggleHidePerfTrades");
+    const logAutoStatusEl = document.getElementById("logAutoStatus");
+    const logResumeBtnEl = document.getElementById("logResumeBtn");
+    const logResumeStickyBtnEl = document.getElementById("logResumeStickyBtn");
+    const logAutoPausedEl = document.getElementById("logAutoPaused");
     const sellAllBtnEl = document.getElementById("sellAllBtn");
     const entryStrategyMarketLabelEl = document.getElementById("entryStrategyMarketLabel");
     const stocksCountdownRowEl = document.getElementById("stocksCountdownRow");
@@ -1100,6 +1359,8 @@
     };
 
     let selectedLogFile = "";
+    let logLinesCache = [];
+    let logAutoScrollEnabled = true;
 
     const summaryConfig = {
       last24h: { suffix: "24h", label: "24h" },
@@ -1688,20 +1949,265 @@
 
     let entryExitPairs = loadStoredJson(ENTRY_EXIT_PAIR_KEY, {});
 
-    function highlightLog(line) {
-      let safe = escapeHtml(line);
-      const highlights = [
-        { regex: /\bBUY\b/g, cls: "log-buy" },
-        { regex: /\bSELL\b/g, cls: "log-sell" },
-        { regex: /\bTP\b/g, cls: "log-tp" },
-        { regex: /\bSL\b/g, cls: "log-sl" },
+    const LOG_SIGNAL_BADGES = new Set([
+      "ENTRY",
+      "EXIT",
+      "BUY",
+      "SELL",
+      "TP",
+      "SL",
+      "CLOSED",
+      "ERROR",
+    ]);
+    const LOG_KNOWN_BADGES = new Set([
+      "CHECK",
+      "NO_POS",
+      "PORTFOLIO",
+      "PERFORMANCE",
+      "TRADES",
+      "WAIT",
+      "ERROR",
+      "SIGNAL",
+      "ENTRY",
+      "EXIT",
+      "BUY",
+      "SELL",
+      "TP",
+      "SL",
+      "CLOSED",
+    ]);
+
+    function normalizeBadgeToken(token) {
+      const upper = token.trim().toUpperCase();
+      if (upper === "NO POS" || upper === "NO POSITION" || upper === "NO_POSITION") {
+        return "NO_POS";
+      }
+      return upper.replace(/\s+/g, "_");
+    }
+
+    function detectBadgeFromText(text) {
+      const rules = [
+        { key: "ERROR", regex: /\bERROR\b/i },
+        { key: "NO_POS", regex: /\bNO POS\b|\bNO POSITION\b|conditions NOT met/i },
+        { key: "ENTRY", regex: /\bENTRY\b/i },
+        { key: "EXIT", regex: /\bEXIT\b/i },
+        { key: "BUY", regex: /\bBUY\b/i },
+        { key: "SELL", regex: /\bSELL\b/i },
+        { key: "TP", regex: /\bTP\b/i },
+        { key: "SL", regex: /\bSL\b/i },
+        { key: "CLOSED", regex: /\bCLOSED\b/i },
+        { key: "PORTFOLIO", regex: /\bPORTFOLIO\b/i },
+        { key: "PERFORMANCE", regex: /\bPERFORMANCE\b/i },
+        { key: "TRADES", regex: /\bTRADES\b/i },
+        { key: "CHECK", regex: /\bCHECK\b/i },
+        { key: "WAIT", regex: /\bWAIT\b/i },
+        { key: "SIGNAL", regex: /\bSIGNAL\b/i },
       ];
 
-      highlights.forEach(({ regex, cls }) => {
-        safe = safe.replace(regex, (m) => `<span class="${cls}">${m}</span>`);
+      for (const rule of rules) {
+        if (rule.regex.test(text)) {
+          return rule.key;
+        }
+      }
+      return "";
+    }
+
+    function formatLogTime(ts) {
+      const parsed = new Date(ts);
+      if (Number.isNaN(parsed.getTime())) return "--:--:--";
+      return parsed.toISOString().slice(11, 19);
+    }
+
+    function parseLogLine(line) {
+      const raw = String(line || "").trimEnd();
+      if (!raw) return null;
+
+      let working = raw.trim();
+      let scope = "";
+      let time = "--:--:--";
+
+      const scopeMatch = working.match(/^\[(CRYPTO|STOCKS)\]\s*/i);
+      if (scopeMatch) {
+        scope = scopeMatch[1].toUpperCase();
+        working = working.slice(scopeMatch[0].length);
+      } else {
+        scope = currentMarket === "stocks" ? "STOCKS" : "CRYPTO";
+      }
+
+      const tsMatch = working.match(/^\[([^\]]+)\]\s*/);
+      if (tsMatch) {
+        time = formatLogTime(tsMatch[1]);
+        working = working.slice(tsMatch[0].length);
+      }
+
+      let symbol = "-";
+      let badgeKey = "";
+      let message = working.trim();
+
+      const firstBracket = message.match(/^\[([^\]]+)\]\s*/);
+      if (firstBracket) {
+        const token = firstBracket[1].trim();
+        const normalized = normalizeBadgeToken(token);
+        if (LOG_KNOWN_BADGES.has(normalized)) {
+          badgeKey = normalized;
+          message = message.slice(firstBracket[0].length).trim();
+        } else {
+          symbol = token;
+          message = message.slice(firstBracket[0].length).trim();
+        }
+      }
+
+      if (!badgeKey) {
+        badgeKey = detectBadgeFromText(message);
+      }
+
+      if (!badgeKey) {
+        badgeKey = "INFO";
+      }
+
+      if (/^-{2,}\s*wait\s*\d+\s*sec\s*-{2,}$/i.test(message)) {
+        return { isDivider: true };
+      }
+
+      return {
+        raw,
+        scope,
+        time,
+        symbol: symbol || "-",
+        badgeKey,
+        message: message || "-",
+      };
+    }
+
+    function getBadgeClass(badgeKey) {
+      if (badgeKey === "BUY" || badgeKey === "ENTRY" || badgeKey === "SIGNAL") {
+        return "log-badge-buy";
+      }
+      if (badgeKey === "SELL" || badgeKey === "EXIT" || badgeKey === "CLOSED") {
+        return "log-badge-exit";
+      }
+      if (badgeKey === "TP") {
+        return "log-badge-tp";
+      }
+      if (badgeKey === "SL") {
+        return "log-badge-sl";
+      }
+      if (badgeKey === "ERROR") {
+        return "log-badge-error";
+      }
+      if (
+        badgeKey === "PORTFOLIO" ||
+        badgeKey === "PERFORMANCE" ||
+        badgeKey === "TRADES"
+      ) {
+        return "log-badge-blue";
+      }
+      return "log-badge-muted";
+    }
+
+    function renderLogRow(entry) {
+      const badgeClass = getBadgeClass(entry.badgeKey);
+      const rowClasses = ["log-row"];
+      if (entry.badgeKey === "ERROR") {
+        rowClasses.push("error");
+      }
+      if (
+        entry.badgeKey === "PORTFOLIO" &&
+        /portfolio|summary|balances|positions|holdings|total/i.test(entry.message)
+      ) {
+        rowClasses.push("section");
+      }
+      return `
+        <div class="${rowClasses.join(" ")}">
+          <div class="log-col">${escapeHtml(entry.time)}</div>
+          <div class="log-col">${escapeHtml(entry.scope)}</div>
+          <div class="log-col"><span class="log-badge ${badgeClass}">[${escapeHtml(entry.badgeKey)}]</span></div>
+          <div class="log-col">${escapeHtml(entry.symbol || "-")}</div>
+          <div class="log-col log-message">${escapeHtml(entry.message)}</div>
+        </div>
+      `;
+    }
+
+    function isLogAtBottom() {
+      if (!logContainerEl) return true;
+      return (
+        logContainerEl.scrollTop + logContainerEl.clientHeight >=
+        logContainerEl.scrollHeight - 4
+      );
+    }
+
+    function updateAutoScrollUi() {
+      if (logAutoStatusEl) {
+        logAutoStatusEl.textContent = `Auto-scroll: ${logAutoScrollEnabled ? "ON" : "OFF"}`;
+      }
+      if (logResumeBtnEl) {
+        logResumeBtnEl.disabled = logAutoScrollEnabled;
+      }
+      if (logAutoPausedEl) {
+        logAutoPausedEl.classList.toggle("is-hidden", logAutoScrollEnabled);
+      }
+    }
+
+    function setAutoScroll(enabled, scrollToBottom = false) {
+      logAutoScrollEnabled = enabled;
+      updateAutoScrollUi();
+      if (enabled && scrollToBottom) {
+        if (logContainerEl) {
+          logContainerEl.scrollTop = logContainerEl.scrollHeight;
+        }
+      }
+    }
+
+    function normalizeLogLine(line) {
+      const raw = String(line ?? "");
+      if (/^\[(CRYPTO|STOCKS)\]\s*/i.test(raw)) {
+        return raw;
+      }
+      const scope = currentMarket === "stocks" ? "STOCKS" : "CRYPTO";
+      return `[${scope}] ${raw}`;
+    }
+
+    function renderLogs() {
+      if (!logRowsEl) return;
+      const search = (logSearchInputEl?.value || "").trim().toLowerCase();
+      const hideEntryCheck = !!logToggleHideEntryCheckEl?.checked;
+      const signalsOnly = !!logToggleSignalsOnlyEl?.checked;
+      const hidePortfolio = !!logToggleHidePortfolioEl?.checked;
+      const hidePerfTrades = !!logToggleHidePerfTradesEl?.checked;
+
+      const previousScrollTop = logContainerEl ? logContainerEl.scrollTop : 0;
+
+      const rows = [];
+      logLinesCache.forEach((line) => {
+        const entry = parseLogLine(line);
+        if (!entry) return;
+        if (entry.isDivider) {
+          rows.push('<div class="log-divider"></div>');
+          return;
+        }
+
+        const rawLower = entry.raw.toLowerCase();
+        if (hideEntryCheck && rawLower.includes("entry 2 check")) return;
+        if (signalsOnly && !LOG_SIGNAL_BADGES.has(entry.badgeKey)) return;
+        if (hidePortfolio && entry.badgeKey === "PORTFOLIO") return;
+        if (hidePerfTrades && (entry.badgeKey === "PERFORMANCE" || entry.badgeKey === "TRADES")) return;
+        if (search) {
+          const haystack = `${entry.symbol} ${entry.message}`.toLowerCase();
+          if (!haystack.includes(search)) return;
+        }
+
+        rows.push(renderLogRow(entry));
       });
 
-      return safe;
+      logRowsEl.innerHTML = rows.join("") || '<div class="log-empty">(no logs yet)</div>';
+
+      if (logContainerEl) {
+        if (logAutoScrollEnabled) {
+          logContainerEl.scrollTop = logContainerEl.scrollHeight;
+        } else {
+          logContainerEl.scrollTop = previousScrollTop;
+        }
+      }
     }
 
     function getExitPresetById(id) {
@@ -2335,13 +2841,8 @@
           throw new Error("invalid log payload");
         }
 
-        const prefix = currentMarket === "stocks" ? "[STOCKS] " : "[CRYPTO] ";
-        const html = (data.lines || [])
-          .map((line) => highlightLog(prefix + line))
-          .join("<br>");
-        logContainerEl.innerHTML = html || "(no logs yet)";
-        // auto scroll to bottom
-        logContainerEl.scrollTop = logContainerEl.scrollHeight;
+        logLinesCache = (data.lines || []).map((line) => normalizeLogLine(line));
+        renderLogs();
         const label = selectedLogFile ? `Viewing ${selectedLogFile}` : "Polling every 5s";
         logStatusPillEl.textContent = `${label} • ${new Date().toLocaleTimeString()}`;
       } catch (err) {
@@ -2562,7 +3063,46 @@
       fetchLogFiles();
     });
 
+    if (logSearchInputEl) {
+      logSearchInputEl.addEventListener("input", () => {
+        renderLogs();
+      });
+    }
+
+    [
+      logToggleHideEntryCheckEl,
+      logToggleSignalsOnlyEl,
+      logToggleHidePortfolioEl,
+      logToggleHidePerfTradesEl,
+    ].forEach((el) => {
+      if (!el) return;
+      el.addEventListener("change", () => {
+        renderLogs();
+      });
+    });
+
+    if (logResumeBtnEl) {
+      logResumeBtnEl.addEventListener("click", () => {
+        setAutoScroll(true, true);
+      });
+    }
+
+    if (logResumeStickyBtnEl) {
+      logResumeStickyBtnEl.addEventListener("click", () => {
+        setAutoScroll(true, true);
+      });
+    }
+
+    if (logContainerEl) {
+      logContainerEl.addEventListener("scroll", () => {
+        if (logAutoScrollEnabled && !isLogAtBottom()) {
+          setAutoScroll(false, false);
+        }
+      });
+    }
+
     // --- INITIAL LOAD ---
+    updateAutoScrollUi();
     setActiveMarket(currentMarket);
   </script>
 </body>
