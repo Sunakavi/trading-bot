@@ -1,0 +1,155 @@
+{
+  "positions": {},
+  "activeStrategyId": 102,
+  "runtimeConfig": {
+    "activeStrategyId": 102,
+    "loopIntervalMs": 900000,
+    "SL_PCT": 0.012,
+    "TP_PCT": 0.024,
+    "TRAIL_START_PCT": 0.012,
+    "TRAIL_DISTANCE_PCT": 0.006,
+    "CANDLE_RED_TRIGGER_PCT": 0.4,
+    "CANDLE_EXIT_ENABLED": false
+  },
+  "settings": {
+    "binanceApiKey": "",
+    "binanceApiSecret": "",
+    "binanceBaseUrl": "https://testnet.binance.vision",
+    "tradingViewWebhookUrl": "",
+    "marketType": "stocks",
+    "alpacaApiKey": "",
+    "alpacaApiSecret": "",
+    "alpacaTradingBaseUrl": "https://paper-api.alpaca.markets",
+    "alpacaDataBaseUrl": "https://data.alpaca.markets",
+    "alpacaDataFeed": "iex",
+    "PORTFOLIO_LAYERS": [
+      {
+        "id": "CORE",
+        "name": "Core",
+        "allocationPct": 0.45,
+        "maxOpenPositions": 6,
+        "maxRiskPerTradePct": 0.5,
+        "lossStopDailyPct": 1.25,
+        "lossStopWeeklyPct": 3,
+        "cooldownHoursAfterStop": 6,
+        "entryPresetId": "CORE_TREND",
+        "exitPresetId": "CORE_EXIT",
+        "timeframe": "4h"
+      },
+      {
+        "id": "SWING",
+        "name": "Swing",
+        "allocationPct": 0.4,
+        "maxOpenPositions": 8,
+        "maxRiskPerTradePct": 0.35,
+        "lossStopDailyPct": 1,
+        "lossStopWeeklyPct": 2.5,
+        "cooldownHoursAfterStop": 6,
+        "entryPresetId": "SWING_PULLBACK",
+        "exitPresetId": "SWING_EXIT",
+        "timeframe": "1h"
+      },
+      {
+        "id": "AGGR",
+        "name": "Aggressive",
+        "allocationPct": 0.15,
+        "maxOpenPositions": 4,
+        "maxRiskPerTradePct": 0.2,
+        "lossStopDailyPct": 0.6,
+        "lossStopWeeklyPct": 1.5,
+        "cooldownHoursAfterStop": 8,
+        "entryPresetId": "AGGR_BREAKOUT",
+        "exitPresetId": "AGGR_EXIT",
+        "timeframe": "15m",
+        "defaultEnabled": false
+      }
+    ],
+    "REGIME_RULES": {
+      "TREND": [
+        "CORE",
+        "SWING"
+      ],
+      "RANGE": [
+        "SWING"
+      ],
+      "VOLATILE": [
+        "AGGR"
+      ],
+      "OFF": []
+    },
+    "REGIME_ENGINE": {
+      "MODE": "AUTO",
+      "REGIME_PROXY_SYMBOL": "BTCUSDT",
+      "TIMEFRAME": "15m",
+      "MIN_CONFIDENCE": 0.55,
+      "REGIME_MIN_HOLD_CANDLES": 3,
+      "RSI_PERIOD": 14,
+      "ATR_PERIOD": 14,
+      "ATR_MA_PERIOD": 14,
+      "VOLUME_MA_PERIOD": 10,
+      "SLOW_MA_PERIOD": 200,
+      "SLOPE_WINDOW": 20,
+      "ATR_RATIO_BREAKOUT": 1.35,
+      "VOL_RATIO_BREAKOUT": 1.2,
+      "RSI_BREAKOUT_MIN": 60,
+      "SLOPE_TREND_MIN": 0.1,
+      "RSI_TREND_MIN": 50,
+      "RSI_TREND_MAX": 65,
+      "ATR_RATIO_TREND_MIN": 0.9,
+      "ATR_RATIO_TREND_MAX": 1.3,
+      "SLOPE_RANGE_MAX": 0.03,
+      "RSI_RANGE_MIN": 45,
+      "RSI_RANGE_MAX": 55,
+      "ATR_RATIO_RANGE_MAX": 1.05,
+      "STRATEGY_PACKS": {
+        "TREND": {
+          "entryStrategyId": 101,
+          "exitPresetId": 1
+        },
+        "RANGE": {
+          "entryStrategyId": 103,
+          "exitPresetId": 3
+        },
+        "BREAKOUT": {
+          "entryStrategyId": 105,
+          "exitPresetId": 7
+        }
+      }
+    }
+  },
+  "portfolio": {
+    "regime": "OFF",
+    "dailyStopHit": false,
+    "layers": {
+      "CORE": {
+        "equityAllocatedPct": 0.45,
+        "pnlDay": 0,
+        "pnlWeek": 0,
+        "drawdownDay": 0,
+        "drawdownWeek": 0,
+        "isPaused": false,
+        "pauseUntil": null
+      },
+      "SWING": {
+        "equityAllocatedPct": 0.4,
+        "pnlDay": 0,
+        "pnlWeek": 0,
+        "drawdownDay": 0,
+        "drawdownWeek": 0,
+        "isPaused": false,
+        "pauseUntil": null
+      },
+      "AGGR": {
+        "equityAllocatedPct": 0.15,
+        "pnlDay": 0,
+        "pnlWeek": 0,
+        "drawdownDay": 0,
+        "drawdownWeek": 0,
+        "isPaused": false,
+        "pauseUntil": null
+      }
+    },
+    "lastPlanTs": 1767372374056
+  },
+  "lastUpdateTs": 1767372374196
+}
