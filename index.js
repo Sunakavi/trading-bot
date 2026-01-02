@@ -786,10 +786,6 @@ async function runMarketLoop(market) {
         marketShared.activeStrategyId = entryStrategyId;
       }
 
-        runtimeConfig.activeStrategyId = entryStrategyId;
-        marketShared.activeStrategyId = entryStrategyId;
-      }
-
       const baseExitConfig = {
         SL_PCT: runtimeConfig.SL_PCT ?? marketConfig.SL_PCT,
         TP_PCT: runtimeConfig.TP_PCT ?? marketConfig.TP_PCT,
