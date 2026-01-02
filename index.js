@@ -703,8 +703,9 @@ async function runMarketLoop(market) {
       }
 
       const today = new Date().toISOString().slice(0, 10);
-      if (context.lastUniverseRefresh !== today) {
+      if (context.lastUniverseRefresh !== today || context.activeSymbols.length === 0) {
         try {
+          logger(COLORS.YELLOW + "[STOCKS] Refreshing universe..." + COLORS.RESET);
           const refreshed = await dataProvider.listUniverse();
           if (Array.isArray(refreshed) && refreshed.length > 0) {
             const openPositions = Object.entries(context.positions)
