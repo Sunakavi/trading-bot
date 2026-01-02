@@ -930,9 +930,10 @@ async function runMarketLoop(market) {
         );
       }
 
+      const fallbackSymbols = StrategyPortfolioConfig.universe?.fallbackSymbols || [];
       const benchmarkSymbol = context.activeSymbols.includes("SPY")
         ? "SPY"
-        : context.activeSymbols[0];
+        : context.activeSymbols[0] || fallbackSymbols[0];
       let regimeCandles = [];
       if (benchmarkSymbol) {
         try {

@@ -54,6 +54,7 @@ class IexProvider extends MarketDataProvider {
 
   async listUniverse() {
     const filters = this.config.universe?.filters || {};
+    const fallbackSymbols = this.config.universe?.fallbackSymbols || [];
     const filterKey = JSON.stringify(filters);
     const now = Date.now();
     const cacheAge = now - this.universeCache.ts;
@@ -81,6 +82,19 @@ class IexProvider extends MarketDataProvider {
       normalized.filter((sym) => !splitSet.has(String(sym).toUpperCase())),
       filters
     );
+
+    if (!filtered.length && fallbackSymbols.length) {
+      const fallback = fallbackSymbols
+        .map((sym) => String(sym).toUpperCase())
+        .filter(Boolean);
+      this.universeCache = {
+        symbols: fallback,
+        ts: now,
+        filtersHash: filterKey,
+      };
+      this.logger?.("[STOCKS] Universe fallback symbols used");
+      return fallback;
+    }
 
     this.universeCache = {
       symbols: filtered,
