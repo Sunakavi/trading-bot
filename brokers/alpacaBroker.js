@@ -43,6 +43,17 @@ class AlpacaBroker extends BrokerAdapter {
   async getAccount() {
     return await this.tradingClient.getAccount();
   }
+
+  findBalance(accountData, asset) {
+    if (typeof this.tradingClient?.findBalance === "function") {
+      return this.tradingClient.findBalance(accountData, asset);
+    }
+    return { free: 0, locked: 0 };
+  }
+
+  getTradingBaseUrl() {
+    return this.tradingClient?.tradingBaseUrl;
+  }
 }
 
 module.exports = { AlpacaBroker };

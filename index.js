@@ -16,8 +16,7 @@ const {
 } = require("./config");
 const { log, initLogSystem, createMarketLogger } = require("./log");
 const { sleep } = require("./utils");
-const { BinanceClient } = require("./binanceClient");
-const { StockClient } = require("./stockClient");
+const { createMarketRouter } = require("./markets/router");
 const { runSymbolStrategy, initPositions } = require("./strategy");
 const { getTradingPlan } = require("./portfolioManager");
 const { canOpenPosition } = require("./riskEngine");
@@ -26,9 +25,6 @@ const {
   normalizeLayerId,
 } = require("./strategyRegistry");
 const { StrategyPortfolioConfig } = require("./strategyPortfolio.config");
-const { IexProvider } = require("./providers/iexProvider");
-const { AlpacaBroker } = require("./brokers/alpacaBroker");
-const { MarketSessionGate } = require("./session/marketSessionGate");
 const { setupKeypressListener } = require("./input");
 const { getStats } = require("./tradeHistory");
 const {
@@ -66,10 +62,9 @@ const marketLoggers = {
   stocks: createMarketLogger("stocks"),
 };
 
-const marketConfigs = {
-  crypto: { ...config, MARKET_TYPE: "crypto", QUOTE: config.CRYPTO_QUOTE },
-  stocks: { ...config, MARKET_TYPE: "stocks", QUOTE: config.STOCK_QUOTE },
-};
+const marketRouter = createMarketRouter({ loggers: marketLoggers });
+const marketAdapters = marketRouter.adapters;
+const ACTIVE_MARKET_KEY = marketRouter.marketKey;
 
 const shared = {
   botRunning: true,
@@ -140,35 +135,9 @@ setupKeypressListener(
 // =======================
 // CLIENTS
 // =======================
-const cryptoClient = new BinanceClient(
-  config.BINANCE_BASE_URL,
-  config.BINANCE_API_KEY,
-  config.BINANCE_API_SECRET,
-  marketLoggers.crypto
-);
-
-const stocksClient = new StockClient({
-  quote: config.STOCK_QUOTE,
-  apiKey: config.ALPACA_API_KEY,
-  apiSecret: config.ALPACA_API_SECRET,
-  tradingBaseUrl: config.ALPACA_TRADING_BASE_URL,
-  dataBaseUrl: config.ALPACA_DATA_BASE_URL,
-  dataFeed: config.ALPACA_DATA_FEED,
-  logger: marketLoggers.stocks,
-});
-
-const stocksDataProvider = new IexProvider({
-  dataClient: stocksClient,
-  config: StrategyPortfolioConfig,
-  logger: marketLoggers.stocks,
-});
-
-const stocksBroker = new AlpacaBroker({ tradingClient: stocksClient });
-const stocksSessionGate = new MarketSessionGate({ dataProvider: stocksDataProvider });
-
 shared.marketClients = {
-  crypto: cryptoClient,
-  stocks: stocksClient,
+  crypto: marketAdapters.crypto.client,
+  stocks: marketAdapters.stocks.client,
 };
 
 // =======================
@@ -479,13 +448,11 @@ async function logPerformance(market, equity, logger) {
 }
 
 async function logPortfolio(market, context) {
-  const { marketClient, marketConfig, broker, logger } = context;
+  const { marketConfig, broker, logger } = context;
   try {
-    const account = broker?.getAccount
-      ? await broker.getAccount()
-      : await marketClient.getAccount();
+    const account = await broker.getAccount();
     const quote = marketConfig.QUOTE;
-    const quoteBal = marketClient.findBalance(account, quote);
+    const quoteBal = broker.findBalance(account, quote);
     const totalQuote = quoteBal.free + quoteBal.locked;
 
     logger(`===== PORTFOLIO (${quote} + top symbols) =====`);
@@ -494,7 +461,7 @@ async function logPortfolio(market, context) {
     let assetsValue = 0;
     for (const sym of context.activeSymbols) {
       const base = market === "stocks" ? sym : sym.replace(quote, "");
-      const bal = marketClient.findBalance(account, base);
+      const bal = broker.findBalance(account, base);
       const totalBase = bal.free + bal.locked;
       const price = context.lastPrices[sym] || 0;
       assetsValue += price * totalBase;
@@ -530,7 +497,7 @@ async function logPortfolio(market, context) {
 }
 
 async function sellAllPositions(market, context) {
-  const { marketConfig, marketClient, broker, logger } = context;
+  const { marketConfig, broker, logger } = context;
   const quote = marketConfig.QUOTE;
   const symbols = new Set([
     ...context.activeSymbols,
@@ -542,7 +509,7 @@ async function sellAllPositions(market, context) {
       if (broker?.sellMarketAll) {
         await broker.sellMarketAll(sym, quote);
       } else {
-        await marketClient.sellMarketAll(sym, quote);
+        await broker.sellMarketAll(sym, quote);
       }
       context.positions[sym] = {
         hasPosition: false,
@@ -584,21 +551,21 @@ function updateMarketClock(marketShared, clock) {
 // =======================
 async function runMarketLoop(market) {
   const logger = marketLoggers[market];
-  const marketClient = shared.marketClients[market];
-  const dataProvider = market === "stocks" ? stocksDataProvider : marketClient;
-  const broker = market === "stocks" ? stocksBroker : marketClient;
-  const runtimeConfig = market === "stocks" ? runtimeConfigStocks : runtimeConfigCrypto;
-  const marketConfig = marketConfigs[market];
+  const marketAdapter = marketAdapters[market];
+  const dataProvider = marketAdapter.dataProvider;
+  const broker = marketAdapter.broker;
+  const runtimeConfig =
+    market === "stocks" ? runtimeConfigStocks : runtimeConfigCrypto;
+  const marketConfig = marketAdapter.config;
+  const marketRuntime = marketAdapter.runtime;
+  const marketUniverse = marketAdapter.universe || dataProvider;
   const marketShared = shared.markets[market];
-  const resolveActiveMarket = () =>
-    config.MARKET_TYPE === "stocks" ? "stocks" : "crypto";
 
   const context = {
     market,
     positions: {},
     activeSymbols: [],
     lastPrices: {},
-    marketClient,
     broker,
     dataProvider,
     marketConfig,
@@ -608,7 +575,7 @@ async function runMarketLoop(market) {
   logger(COLORS.PURPLE + `[SYSTEM] Starting ${market} loop...` + COLORS.RESET);
 
   if (market === "crypto") {
-    context.activeSymbols = await marketClient.fetchTopSymbols(marketConfig);
+    context.activeSymbols = await dataProvider.fetchTopSymbols(marketConfig);
     context.positions = initPositions(context.activeSymbols);
   }
 
@@ -641,12 +608,6 @@ async function runMarketLoop(market) {
   while (true) {
     marketShared.activeStrategyId = runtimeConfig.activeStrategyId;
     marketShared.openPositions = countOpenPositions(context.positions);
-
-    if (resolveActiveMarket() !== market) {
-      marketShared.interruptNow = false;
-      await sleep(1000);
-      continue;
-    }
 
     if (shared.stopRequested) {
       logger(
@@ -684,7 +645,7 @@ async function runMarketLoop(market) {
     let marketOpen = true;
     if (market === "stocks") {
       try {
-        const clock = await stocksSessionGate.getSession();
+        const clock = await marketRuntime.getSession();
         updateMarketClock(marketShared, clock);
 
         if (!clock?.isOpen) {
@@ -706,7 +667,7 @@ async function runMarketLoop(market) {
       if (context.lastUniverseRefresh !== today || context.activeSymbols.length === 0) {
         try {
           logger(COLORS.YELLOW + "[STOCKS] Refreshing universe..." + COLORS.RESET);
-          const refreshed = await dataProvider.listUniverse();
+          const refreshed = await marketUniverse.listUniverse();
           if (Array.isArray(refreshed) && refreshed.length > 0) {
             const openPositions = Object.entries(context.positions)
               .filter(([, pos]) => pos?.hasPosition)
@@ -906,21 +867,21 @@ async function runMarketLoop(market) {
 
         marketShared.alpacaStatus = {
           connected: true,
-          baseUrl: marketClient.tradingBaseUrl,
+          baseUrl: broker.getTradingBaseUrl?.() || config.ALPACA_TRADING_BASE_URL,
           lastCheckTs: Date.now(),
           lastError: null,
           equity: alpacaEquity,
         };
 
         logger(
-          `[ALPACA] Connected ${marketClient.tradingBaseUrl} | Equity=${alpacaEquity.toFixed(
+          `[ALPACA] Connected ${broker.getTradingBaseUrl?.() || config.ALPACA_TRADING_BASE_URL} | Equity=${alpacaEquity.toFixed(
             2
           )} ${marketConfig.QUOTE}`
         );
       } catch (err) {
         marketShared.alpacaStatus = {
           connected: false,
-          baseUrl: marketClient.tradingBaseUrl,
+          baseUrl: broker.getTradingBaseUrl?.() || config.ALPACA_TRADING_BASE_URL,
           lastCheckTs: Date.now(),
           lastError: err.response?.data || err.message,
           equity: null,
@@ -1180,8 +1141,7 @@ async function runMarketLoop(market) {
 // START HTTP + BOT
 // =======================
 startHttpServer(shared);
-runMarketLoop("crypto");
-runMarketLoop("stocks");
+runMarketLoop(ACTIVE_MARKET_KEY);
 
 
 

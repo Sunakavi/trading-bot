@@ -1,7 +1,7 @@
 // stockClient.js (Alpaca market data + paper trading)
 const axios = require("axios");
-const { log } = require("./log");
-const { COLORS } = require("./config");
+const { log } = require("../../log");
+const { COLORS } = require("../../config");
 
 const DEFAULT_TRADING_URL = "https://paper-api.alpaca.markets";
 const DEFAULT_DATA_URL = "https://data.alpaca.markets";
@@ -498,3 +498,46 @@ class StockClient {
 }
 
 module.exports = { StockClient };
+
+function createStockClient({
+  quote = "USD",
+  apiKey = "",
+  apiSecret = "",
+  tradingBaseUrl,
+  dataBaseUrl,
+  dataFeed,
+  logger,
+} = {}) {
+  const client = new StockClient({
+    quote,
+    apiKey,
+    apiSecret,
+    tradingBaseUrl,
+    dataBaseUrl,
+    dataFeed,
+    logger,
+  });
+
+  if (typeof client.getBars !== "function") {
+    client.getBars = async (symbol, timeframe, limit) =>
+      client.fetchKlines(symbol, timeframe, limit);
+  }
+
+  if (typeof client.closePosition !== "function") {
+    client.closePosition = async (symbol) => client.sellMarketAll(symbol);
+  }
+
+  if (typeof client.isMarketOpen !== "function") {
+    client.isMarketOpen = async () => {
+      try {
+        return await client.isMarketOpen();
+      } catch (err) {
+        return false;
+      }
+    };
+  }
+
+  return client;
+}
+
+module.exports.createStockClient = createStockClient;

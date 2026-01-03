@@ -2,9 +2,9 @@
 
 const axios = require("axios");
 const crypto = require("crypto");
-const { log } = require("./log");
-const { COLORS } = require("./config");
-const { parseKlines } = require("./utils");
+const { log } = require("../../log");
+const { COLORS } = require("../../config");
+const { parseKlines } = require("../../utils");
 
 class BinanceClient {
   constructor(baseURL, apiKey, apiSecret, logger = log) {
@@ -298,5 +298,49 @@ async buyMarket(symbol, quote, quoteOrderFraction) {
 }
 
 module.exports = { BinanceClient };
+
+function createCryptoClient({ baseUrl, apiKey, apiSecret, logger }) {
+  const client = new BinanceClient(baseUrl, apiKey, apiSecret, logger);
+
+  if (typeof client.getBars !== "function") {
+    client.getBars = async (symbol, timeframe, limit) =>
+      client.fetchKlines(symbol, timeframe, limit);
+  }
+
+  if (typeof client.placeOrder !== "function") {
+    client.placeOrder = async ({ symbol, side, qty, quote, quoteOrderFraction }) => {
+      if (!symbol || !side) return null;
+      const normalized = String(side).toLowerCase();
+      if (normalized === "buy") {
+        const fraction = Number.isFinite(quoteOrderFraction)
+          ? quoteOrderFraction
+          : qty;
+        if (!Number.isFinite(fraction)) return null;
+        return await client.buyMarket(symbol, quote, fraction);
+      }
+      if (normalized === "sell") {
+        return await client.sellMarketAll(symbol, quote);
+      }
+      return null;
+    };
+  }
+
+  if (typeof client.closePosition !== "function") {
+    client.closePosition = async (symbol, quote) =>
+      client.sellMarketAll(symbol, quote);
+  }
+
+  if (typeof client.getPositions !== "function") {
+    client.getPositions = async () => [];
+  }
+
+  if (typeof client.isMarketOpen !== "function") {
+    client.isMarketOpen = async () => true;
+  }
+
+  return client;
+}
+
+module.exports.createCryptoClient = createCryptoClient;
 
 
