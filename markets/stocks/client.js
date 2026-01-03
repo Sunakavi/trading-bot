@@ -177,10 +177,12 @@ class StockClient {
     });
 
     const bars = res.data?.bars || {};
-    return symbols.filter((symbol) => {
+    const filtered = symbols.filter((symbol) => {
       const series = bars[symbol] || [];
       return Array.isArray(series) && series.length > 0;
     });
+    this.log(`[STOCKS] Bars filter count=${filtered.length}`);
+    return filtered;
   }
 
   async fetchMostActiveSymbols() {
@@ -197,6 +199,7 @@ class StockClient {
       [];
 
     const candidates = raw.filter((item) => item?.symbol);
+    this.log(`[STOCKS] Most-actives raw count=${candidates.length}`);
     const skipCounts = { notTradable: 0, otc: 0, halted: 0 };
     const filtered = candidates.filter((item) => {
       if (item.is_tradable === false) {
@@ -219,6 +222,7 @@ class StockClient {
         `[STOCKS] Skipped symbols: notTradable=${skipCounts.notTradable}, otc=${skipCounts.otc}, halted=${skipCounts.halted}`
       );
     }
+    this.log(`[STOCKS] Most-actives tradable count=${filtered.length}`);
 
     return filtered.map((item) => item.symbol);
   }

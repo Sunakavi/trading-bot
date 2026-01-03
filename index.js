@@ -78,6 +78,7 @@ const shared = {
       marketClock: {},
       stopHandled: false,
       resetHandled: false,
+      tradeGuard: {},
     },
     stocks: {
       activeStrategyId: runtimeConfigStocks.activeStrategyId ?? 2,
@@ -86,6 +87,7 @@ const shared = {
       marketClock: {},
       stopHandled: false,
       resetHandled: false,
+      tradeGuard: {},
     },
   },
   marketClients: {},
@@ -192,6 +194,12 @@ function formatRegimeNumber(value, digits = 2) {
 
 function formatRegimePercent(value, digits = 2) {
   return Number.isFinite(value) ? `${value.toFixed(digits)}%` : "n/a";
+}
+
+function resolveSessionKey(session) {
+  const ref = session?.nextClose || session?.nextOpen;
+  const ts = ref ? Date.parse(ref) : Date.now();
+  return new Date(ts).toISOString().slice(0, 10);
 }
 
 const ENTRY_PRESET_IDS = {
@@ -404,6 +412,7 @@ async function resetFundsForMarket(market, runtimeConfig, logger) {
       activeStrategyId: runtimeConfig.activeStrategyId,
       runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
       settings: loadSettings().settings,
+      tradeGuard: shared.markets?.[market]?.tradeGuard || {},
       lastUpdateTs: Date.now(),
     },
     market
@@ -602,6 +611,10 @@ async function runMarketLoop(market) {
       }
     }
 
+    if (persisted.tradeGuard) {
+      marketShared.tradeGuard = persisted.tradeGuard;
+    }
+
     logger(COLORS.PURPLE + "[STATE] Restored previous state" + COLORS.RESET);
   }
 
@@ -625,6 +638,7 @@ async function runMarketLoop(market) {
           runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
           settings: loadSettings().settings,
           portfolio: context.portfolio?.statePatch?.portfolio,
+          tradeGuard: marketShared.tradeGuard,
           lastUpdateTs: Date.now(),
         },
         market
@@ -643,18 +657,21 @@ async function runMarketLoop(market) {
     }
 
     let marketOpen = true;
+    let allowEntriesBySession = true;
+    let sessionSnapshot = null;
     if (market === "stocks") {
       try {
-        const clock = await marketRuntime.getSession();
-        updateMarketClock(marketShared, clock);
+        const gate = await marketRuntime.getTradeGate();
+        sessionSnapshot = gate.session || null;
+        updateMarketClock(marketShared, sessionSnapshot);
 
-        if (!clock?.isOpen) {
-          marketOpen = false;
-          const countdown = marketShared.marketClock.countdown || "--:--:--";
-          const nextOpen = clock?.nextOpen || "unknown";
-          logger(
-            `[STOCKS] MARKET CLOSED | opens in ${countdown} | next_open=${nextOpen} ET`
-          );
+        marketOpen = gate.isOpen;
+        allowEntriesBySession = gate.allowEntries;
+
+        if (!gate.isOpen) {
+          logger("[STOCKS] STOCKS OFF (market closed)");
+        } else if (!gate.allowEntries) {
+          logger(`[STOCKS] STOCKS OFF (entry window: ${gate.reason})`);
         }
       } catch (err) {
         logger(
@@ -695,6 +712,14 @@ async function runMarketLoop(market) {
     }
 
     marketShared.interruptNow = false;
+
+    if (market === "stocks") {
+      const nowTs = Date.now();
+      const disabledUntil = Number(marketShared.tradeGuard?.disabledUntil) || 0;
+      if (disabledUntil && nowTs >= disabledUntil) {
+        marketShared.tradeGuard = {};
+      }
+    }
 
     updateRuntimeExitConfig(marketConfig, runtimeConfig);
 
@@ -925,9 +950,44 @@ async function runMarketLoop(market) {
         now: Date.now(),
       });
       context.portfolio = portfolioPlan;
+
+      const dailyStopHit = Boolean(
+        portfolioPlan?.statePatch?.portfolio?.dailyStopHit
+      );
+      const sessionKey = resolveSessionKey(sessionSnapshot);
+      const prevSessionKey = marketShared.tradeGuard?.sessionKey;
+      const shouldApplyDailyStop = dailyStopHit &&
+        (!prevSessionKey || prevSessionKey === sessionKey);
+
+      if (!shouldApplyDailyStop && portfolioPlan.enabledLayersByRegime) {
+        portfolioPlan.enabledLayers = portfolioPlan.enabledLayersByRegime;
+      }
+
+      if (portfolioPlan?.statePatch?.portfolio) {
+        portfolioPlan.statePatch.portfolio.dailyStopHit = shouldApplyDailyStop;
+      }
+
+      if (shouldApplyDailyStop) {
+        const nextOpenTs = sessionSnapshot?.nextOpen
+          ? Date.parse(sessionSnapshot.nextOpen)
+          : NaN;
+        const disabledUntil = Number.isFinite(nextOpenTs)
+          ? nextOpenTs
+          : Date.now() + 12 * 60 * 60 * 1000;
+        marketShared.tradeGuard = {
+          dailyStopHit: true,
+          disabledUntil,
+          sessionKey,
+        };
+      } else if (prevSessionKey && prevSessionKey !== sessionKey) {
+        marketShared.tradeGuard = {};
+      }
     }
 
     if (market === "stocks" && portfolioPlan) {
+      const nowTs = Date.now();
+      const disabledUntil = Number(marketShared.tradeGuard?.disabledUntil) || 0;
+      const allowEntriesByGuard = !(disabledUntil && nowTs < disabledUntil);
       const enabledLayers = portfolioPlan.enabledLayers || [];
       const layerConfigsById = portfolioPlan.layerConfigsById || {};
       const exitPresetMap = portfolioPlan.exitPresetMap || {};
@@ -1065,7 +1125,7 @@ async function runMarketLoop(market) {
             market,
             logger,
             {
-              allowEntries: orderFraction > 0 && marketOpen,
+              allowEntries: orderFraction > 0 && marketOpen && allowEntriesBySession && allowEntriesByGuard,
               orderFraction,
               layerId,
               strategyId,
@@ -1077,6 +1137,11 @@ async function runMarketLoop(market) {
               exitPreset: exitPresetMap[exitPreset.exitPresetId],
               exitConfigResolver,
               riskAllocatedUSD: maxRiskUsd,
+              accountSnapshot,
+              availableCash: freeCash,
+              allowFractional: StrategyPortfolioConfig.orderSizing?.allowFractional,
+              minNotionalUsd: StrategyPortfolioConfig.orderSizing?.minNotionalUsd,
+
             }
           );
 
@@ -1126,6 +1191,7 @@ async function runMarketLoop(market) {
         runtimeConfig: buildRuntimeConfigSnapshot(runtimeConfig),
         settings: loadSettings().settings,
         portfolio: context.portfolio?.statePatch?.portfolio,
+        tradeGuard: marketShared.tradeGuard,
         lastUpdateTs: Date.now(),
       },
       market

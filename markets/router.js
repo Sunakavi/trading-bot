@@ -56,7 +56,10 @@ function createMarketAdapters({ loggers } = {}) {
     dataProvider: stocksUniverse,
     broker: stocksBroker,
     config: buildStocksConfig(config),
-    runtime: createStocksRuntime({ dataProvider: stocksUniverse }),
+    runtime: createStocksRuntime({
+      dataProvider: stocksUniverse,
+      sessionConfig: StrategyPortfolioConfig.session,
+    }),
     universe: stocksUniverse,
   };
 

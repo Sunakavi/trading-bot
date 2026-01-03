@@ -68,6 +68,8 @@ class IexProvider extends MarketDataProvider {
       (await this.dataClient.fetchMostActiveSymbols?.()) ||
       (await this.dataClient.fetchTopSymbols?.(this.config)) ||
       [];
+    const rawCount = Array.isArray(candidates) ? candidates.length : 0;
+    this.logger?.(`[STOCKS] Universe raw candidates=${rawCount}`);
 
     if (!Array.isArray(candidates) || candidates.length === 0) {
       this.logger?.("[STOCKS] Universe list candidates empty");
@@ -89,28 +91,47 @@ class IexProvider extends MarketDataProvider {
       filters
     );
 
-    this.logger?.("[STOCKS] Universe filters result=" + (filtered?.length || 0));
+    const filteredCount = filtered?.length || 0;
+    this.logger?.("[STOCKS] Universe filters result=" + filteredCount);
 
-    if (!filtered.length && fallbackSymbols.length) {
-      const fallback = fallbackSymbols
-        .map((sym) => String(sym).toUpperCase())
-        .filter(Boolean);
-      this.universeCache = {
-        symbols: fallback,
-        ts: now,
-        filtersHash: filterKey,
-      };
-      this.logger?.("[STOCKS] Universe fallback symbols used");
-      return fallback;
+    const fallbackList = fallbackSymbols
+      .map((sym) => String(sym).toUpperCase())
+      .filter(Boolean);
+    const universeTargetMin = Number(filters.universeTargetMin) || 0;
+    const uniqueFinal = Array.from(new Set(filtered));
+    let fallbackUsed = 0;
+
+    if (universeTargetMin && uniqueFinal.length < universeTargetMin) {
+      for (const sym of fallbackList) {
+        if (uniqueFinal.length >= universeTargetMin) break;
+        if (!uniqueFinal.includes(sym)) {
+          uniqueFinal.push(sym);
+          fallbackUsed += 1;
+        }
+      }
     }
 
+    let finalUniverse = uniqueFinal;
+    if (universeTargetMin && finalUniverse.length < universeTargetMin) {
+      finalUniverse = fallbackList;
+      fallbackUsed = finalUniverse.length;
+      this.logger?.("[STOCKS] Universe fallback only (target min unmet)");
+    }
+
+    this.logger?.(
+      "[STOCKS] Universe final=" +
+        finalUniverse.length +
+        " fallbackUsed=" +
+        fallbackUsed
+    );
+
     this.universeCache = {
-      symbols: filtered,
+      symbols: finalUniverse,
       ts: now,
       filtersHash: filterKey,
     };
 
-    return filtered;
+    return finalUniverse;
   }
 
   async applyUniverseFilters(symbols, filters) {
@@ -121,8 +142,14 @@ class IexProvider extends MarketDataProvider {
       advDollarMinUpper,
       advDollarMinLower,
       avgShareVolumeMin,
+      avgShareVolumeMinUpper,
+      avgShareVolumeMinLower,
       atrPctMin,
+      atrPctMinUpper,
+      atrPctMinLower,
       atrPctMax,
+      atrPctMaxUpper,
+      atrPctMaxLower,
       excludeKeywords = [],
       universeTargetMin,
       universeTargetMax,
@@ -133,64 +160,66 @@ class IexProvider extends MarketDataProvider {
     const sanitized = symbols.filter((sym) => typeof sym === "string" && sym.length);
     if (!sanitized.length) return [];
 
-    const filteredOnce = await this.filterByBars(
-      sanitized,
+    const targetMin = Number.isFinite(universeTargetMin)
+      ? universeTargetMin
+      : 0;
+    const targetMax = Number.isFinite(universeTargetMax)
+      ? universeTargetMax
+      : null;
+
+    const advLevels = [
+      advDollarMinUpper,
       advDollarMin,
-      {
-        priceMin,
-        priceMax,
-        avgShareVolumeMin,
-        atrPctMin,
-        atrPctMax,
-        excludeKeywords,
-        barLookbackDays,
-        batchSize,
-      }
-    );
+      advDollarMinLower,
+    ];
+    const volLevels = [
+      avgShareVolumeMinUpper,
+      avgShareVolumeMin,
+      avgShareVolumeMinLower,
+    ];
+    const atrMinLevels = [atrPctMinUpper, atrPctMin, atrPctMinLower];
+    const atrMaxLevels = [atrPctMaxLower, atrPctMax, atrPctMaxUpper];
 
-    if (
-      Number.isFinite(universeTargetMax) &&
-      filteredOnce.length > universeTargetMax &&
-      Number.isFinite(advDollarMinUpper)
-    ) {
-      return await this.filterByBars(
-        sanitized,
-        advDollarMinUpper,
-        {
-          priceMin,
-          priceMax,
-          avgShareVolumeMin,
-          atrPctMin,
-          atrPctMax,
-          excludeKeywords,
-          barLookbackDays,
-          batchSize,
-        }
-      );
+    const pickLevel = (levels, fallback, index) => {
+      const value = levels[index];
+      return Number.isFinite(value) ? value : fallback;
+    };
+
+    const baseFilters = {
+      priceMin,
+      priceMax,
+      excludeKeywords,
+      barLookbackDays,
+      batchSize,
+    };
+
+    const runPass = async (index) => {
+      const advMin = pickLevel(advLevels, advDollarMin, index);
+      const avgVolMin = pickLevel(volLevels, avgShareVolumeMin, index);
+      const atrMin = pickLevel(atrMinLevels, atrPctMin, index);
+      const atrMax = pickLevel(atrMaxLevels, atrPctMax, index);
+      return await this.filterByBars(sanitized, advMin, {
+        ...baseFilters,
+        avgShareVolumeMin: avgVolMin,
+        atrPctMin: atrMin,
+        atrPctMax: atrMax,
+      });
+    };
+
+    let filtered = await runPass(0);
+    if (targetMax && filtered.length > targetMax && Number.isFinite(advDollarMinUpper)) {
+      return filtered;
     }
 
-    if (
-      Number.isFinite(universeTargetMin) &&
-      filteredOnce.length < universeTargetMin &&
-      Number.isFinite(advDollarMinLower)
-    ) {
-      return await this.filterByBars(
-        sanitized,
-        advDollarMinLower,
-        {
-          priceMin,
-          priceMax,
-          avgShareVolumeMin,
-          atrPctMin,
-          atrPctMax,
-          excludeKeywords,
-          barLookbackDays,
-          batchSize,
-        }
-      );
+    if (targetMin && filtered.length < targetMin) {
+      filtered = await runPass(1);
     }
 
-    return filteredOnce;
+    if (targetMin && filtered.length < targetMin) {
+      filtered = await runPass(2);
+    }
+
+    return filtered;
   }
 
   async filterByBars(symbols, advDollarMin, options) {

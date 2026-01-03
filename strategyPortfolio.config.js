@@ -3,6 +3,16 @@
 
 const StrategyPortfolioConfig = {
   market: "stocks",
+  session: {
+    sessionDurationMinutes: 390,
+    noEntryAfterOpenMinutes: 5,
+    noEntryBeforeCloseMinutes: 15,
+    noEntryAfterMinutesSinceOpen: 0,
+  },
+  orderSizing: {
+    minNotionalUsd: 10,
+    allowFractional: false,
+  },
   universe: {
     source: "iex",
     fallbackSymbols: [

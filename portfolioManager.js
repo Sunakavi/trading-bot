@@ -150,6 +150,7 @@ function getTradingPlan(context = {}) {
   return {
     regime,
     enabledLayers: effectiveEnabledLayers,
+    enabledLayersByRegime: enabledLayers,
     layerBudgets,
     layerStrategy,
     layerEntry,

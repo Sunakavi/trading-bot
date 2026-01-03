@@ -51,6 +51,23 @@ function initPositions(symbols) {
   return positions;
 }
 
+const MIN_ORDER_NOTIONAL_USD = 10;
+
+function resolveBuyingPower(accountSnapshot, fallbackCash = 0) {
+  const raw = Number(
+    accountSnapshot?.account?.buying_power ??
+      accountSnapshot?.account?.cash ??
+      fallbackCash ??
+      0
+  );
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+function resolveFractionalFlag(accountSnapshot, explicit) {
+  if (explicit !== undefined) return Boolean(explicit);
+  return Boolean(accountSnapshot?.account?.fractional_trading);
+}
+
 // =========================================================
 // STRATEGY 1: GOLDEN CROSS (SMA 12 / SMA 50)
 // =========================================================
@@ -711,13 +728,93 @@ async function runSymbolStrategy(
           COLORS.RESET
       );
 
-      const result = broker.buyMarket
-        ? await broker.buyMarket(symbol, config.QUOTE, orderFraction)
-        : await broker.placeOrder?.({
-            symbol,
-            side: "buy",
-            qty: null,
-          });
+      const accountSnapshot = options.accountSnapshot || null;
+      const buyingPower = resolveBuyingPower(
+        accountSnapshot,
+        options.availableCash
+      );
+      const allowFractional = resolveFractionalFlag(
+        accountSnapshot,
+        options.allowFractional
+      );
+      const minNotional = Number(options.minNotionalUsd) || MIN_ORDER_NOTIONAL_USD;
+      let targetNotional = 0;
+
+      const riskUsd = Number(options.riskAllocatedUSD);
+      if (Number.isFinite(riskUsd) && riskUsd > 0) {
+        let riskPerShare = 0;
+        if (exitPreset?.initialAtrMult) {
+          const atr = calcATR(candles, exitPreset.atrPeriod || 14);
+          if (atr) {
+            riskPerShare = atr * exitPreset.initialAtrMult;
+          }
+        }
+        if (!riskPerShare) {
+          const stopPct = Number(resolvedExitConfig.SL_PCT ?? config.SL_PCT);
+          if (stopPct > 0) {
+            riskPerShare = last.close * stopPct;
+          }
+        }
+        if (riskPerShare > 0) {
+          targetNotional = (riskUsd / riskPerShare) * last.close;
+        }
+      }
+
+      if (!Number.isFinite(targetNotional) || targetNotional <= 0) {
+        targetNotional = buyingPower * orderFraction;
+      }
+
+      const notional = Math.min(targetNotional, buyingPower);
+      if (!Number.isFinite(notional) || notional < minNotional) {
+        log(
+          COLORS.YELLOW +
+            `[${symbol}] SKIP order notional=${notional.toFixed(2)} < min=${minNotional}` +
+            COLORS.RESET
+        );
+        positions[symbol] = pos;
+        return;
+      }
+
+      let qty = notional / last.close;
+      if (!Number.isFinite(qty) || qty <= 0) {
+        log(
+          COLORS.YELLOW + `[${symbol}] SKIP order qty invalid` + COLORS.RESET
+        );
+        positions[symbol] = pos;
+        return;
+      }
+
+      if (!allowFractional) {
+        qty = Math.floor(qty);
+        if (qty < 1) {
+          log(
+            COLORS.YELLOW +
+              `[${symbol}] SKIP order qty<1 (fractional disabled)` +
+              COLORS.RESET
+          );
+          positions[symbol] = pos;
+          return;
+        }
+      } else {
+        qty = Number(qty.toFixed(6));
+        if (qty <= 0) {
+          log(
+            COLORS.YELLOW +
+              `[${symbol}] SKIP order qty<=0 (fractional)` +
+              COLORS.RESET
+          );
+          positions[symbol] = pos;
+          return;
+        }
+      }
+
+      const result = await broker.placeOrder?.({
+        symbol,
+        side: "buy",
+        qty: String(qty),
+        timeInForce: "day",
+        type: "market",
+      });
 
       if (result) {
         // Update state on successful buy
