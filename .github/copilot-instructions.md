@@ -1,54 +1,76 @@
 <!-- Copilot / AI agent instructions for the Crypto Trading Bot repo -->
 # Quick orientation
 
-This Node.js trading bot runs a single-process loop (index.js) that fetches market data, runs a selected strategy from `strategy.js`, and executes trades through a pluggable market client (`binanceClient.js` for crypto or `stockClient.js` for stocks).
+This Node.js trading bot runs a single-process loop in `index.js` that fetches market data, evaluates strategies, and executes trades through a market client (`binanceClient.js` for crypto or `stockClient.js` for stocks). A REST API + web dashboard in `server.js` provides live control.
 
-- Entry point: index.js — orchestrates the main loop, state persistence and invokes `runSymbolStrategy()` for each symbol.
-- HTTP/GUI controller: server.js — exposes runtime control (start/stop/kill/reset/config/settings) and serves `public/` static UI.
-- Market abstraction: `BinanceClient` / `StockClient` — required API surface: `fetchKlines()`, `fetchTopSymbols()`, `buyMarket()`, `sellMarketAll()`, `getAccount()`, `findBalance()`.
-- Persistent state: `state.json`, `performance.json`, `state/history.json` — read/write via `stateManager.js`.
+# Project goals
 
-# Important patterns & conventions
+- Provide a safe testnet/paper trading bot for crypto (Binance Testnet) and stocks (Alpaca paper).
+- Allow live strategy switching and exit tuning without restarting.
+- Persist state/performance/settings to JSON files for resumable runs.
+- Offer a web dashboard + REST API for control and monitoring.
 
-- CommonJS modules across the codebase (use `require` / `module.exports`).
-- Runtime control lives in `server.js` as `runtimeConfig` and is synchronized into `index.js` on each loop. Do not bypass this object when changing loop settings or exit thresholds.
-- Strategies are selected by numeric ID (allowed IDs in `server.js`): [1,2,3,101..108]. To add variants, update `strategy.js` and `server.js` allowed lists together.
-- Position shape (single symbol): `{ hasPosition: boolean, entryPrice: number, qty: number, maxPrice: number }`. Maintain this shape when modifying state logic.
-- File-based persistence is the single source of truth between runs. Use `stateManager.updateState()` for small changes and `saveState()` when writing full snapshot.
+# Features (current)
 
-# Run / dev commands
+- Multi-market support: crypto (Binance Testnet) and stocks (Alpaca paper).
+- Strategy IDs: base 1/2/3 with preset IDs 101-108 (mapped in `strategy.js` and UI).
+- Exit models: SL/TP, trailing stop, candle confirmation.
+- Runtime controls: start/stop/kill, loop interval, reset funds, strategy/exit config.
+- State, performance, settings, and trade-history persistence (JSON files).
+- Web dashboard served from `public/` and REST endpoints in `server.js`.
+- Regime + portfolio layer logic (`marketRegimeEngine.js`, `strategyPortfolio.config.js`).
 
-- Install: `npm install`
-- Start bot: `node index.js`
-- No tests are present; keep changes small and run locally against Binance Testnet by default (see `.env` and `README.md`).
+# Key files and responsibilities
 
-# Key integration points (safe-edit checklist for agents)
+- `index.js`: main loop, market selection, strategy evaluation, and trade execution.
+- `server.js`: REST API + dashboard, runtime config updates, start/stop/kill/reset.
+- `strategy.js`: entry logic and shared exit handling.
+- `strategyRegistry.js`: strategy metadata/preset registration.
+- `exitPresetRegistry.js`: exit preset definitions.
+- `marketRegimeEngine.js` / `regimeDetector.js`: regime classification logic.
+- `strategyPortfolio.config.js`: portfolio layers and regime-to-strategy mapping.
+- `config.js`: static defaults (MA/RSI/intervals, exit defaults, env settings).
+- `settingsManager.js`: load/save normalized settings (`settings.json`).
+- `stateManager.js`: load/save state and performance snapshots.
+- `tradeHistory.js`: trade history retention in `state/history*.json`.
+- `dataDir.js`: data root selection (local or `DATA_DIR`/`RAILWAY_VOLUME_MOUNT_PATH`).
+- `binanceClient.js` / `stockClient.js`: exchange client adapters.
+- `utils.js`: indicators and helpers.
+- `input.js`: keyboard shortcuts.
+- `log.js`: log routing and file output.
 
-- Modifying trading logic: edit `strategy.js`. Respect existing exit handling in `handleExit()` (SL/TP/trail + optional candle confirmation).
-- Changing HTTP control surface: edit `server.js` and update `runtimeConfig`, allowed IDs and allowed intervals. Ensure `shared.interruptNow` is triggered when config changes so the loop re-evaluates immediately.
-- Market client changes: maintain the public method names used by `index.js` and `strategy.js` (fetchKlines/fetchTopSymbols/buyMarket/sellMarketAll/getAccount/findBalance).
-- State/Performance files: `state.json` and `performance.json` live in the repo root. Avoid renaming — other modules use those exact paths.
+# Core objects and data shapes
 
-# Project-specific gotchas & notes for agents
+- Position: `{ hasPosition: boolean, entryPrice: number, qty: number, maxPrice: number }`
+- State snapshot: `{ positions: { [symbol]: Position }, activeStrategyId: number, runtimeConfig?: {...}, settings?: {...}, lastUpdateTs: number }`
+- Runtime config (server + loop): `{ activeStrategyId, loopIntervalMs, SL_PCT, TP_PCT, TRAIL_START_PCT, TRAIL_DISTANCE_PCT, CANDLE_EXIT_ENABLED, CANDLE_RED_TRIGGER_PCT }`
+- Settings (from `settingsManager.js`): exchange keys/URLs, `marketType`, portfolio layers, regime rules/engine.
 
-- `binanceClient.buyMarket()` enforces a minimum `quoteQty` threshold (~5) and adjusts to LOT_SIZE stepSize — altering this affects which BUY orders are attempted.
-- `index.js` uses interruptible sleep (chunked sleep) and several flags (`shared.interruptNow`, `shared.killSwitch`, `shared.resetFundsRequested`) — changes to loop control must preserve these flags to keep HTTP/keypress control responsive.
-- Many files include Hebrew comments; do not remove them when editing unless cleaning up intentionally.
-- `server.js` exposes API endpoints useful for tests: `POST /api/kill`, `POST /api/bot/stop`, `POST /api/bot/start`, `POST /api/resetFunds`, `POST /api/config` (change strategy/interval/exit settings). Use these endpoints in integration tests or when automating scenarios.
+# Persistence files (dataDir-rooted)
 
-# When creating PRs or edits
+`dataDir.js` resolves paths to either repo root or a mounted volume.
 
-- Keep changes small, test locally with Testnet credentials in `.env` (never commit secrets).
-- If changing runtime parameters (loopIntervalMs, SL/TP/TRAIL), update `buildRuntimeConfigSnapshot()` and ensure `updateState()` is called so UI and saved state remain consistent.
-- Document new strategy IDs or API routes in `README.md` and keep UI in `public/` in sync.
+- `settings.json`
+- `state.json` / `state.stocks.json`
+- `performance.json` / `performance.stocks.json`
+- `state/history.json` / `state/history.stocks.json`
+- `logs/` (per-market daily logs)
+
+# Safe-edit checklist for agents
+
+- If changing strategy logic, update `strategy.js` and keep preset IDs in sync with `server.js`.
+- When touching runtime config or exits, update `buildRuntimeConfigSnapshot()` in `server.js`.
+- Do not change persisted filenames or paths without updating `dataDir.js`, `stateManager.js`, and `tradeHistory.js`.
+- Keep CommonJS style (`require` / `module.exports`) across new files.
+- Preserve user safety: avoid modifying `.env` or committing secrets.
 
 # References
 
-- Entry point: [index.js](index.js)
-- HTTP + runtime control: [server.js](server.js)
-- Strategy/TA: [strategy.js](strategy.js)
-- Exchange client: [binanceClient.js](binanceClient.js)
-- Persistence helpers: [stateManager.js](stateManager.js)
-- Run instructions: [README.md](README.md)
-
-If any section is unclear or you'd like the agent to add examples (API calls, example unit tests, or a short integration test harness), tell me which part to expand. 
+- Main loop: [index.js](index.js)
+- API + UI: [server.js](server.js)
+- Strategy engine: [strategy.js](strategy.js)
+- Strategy presets: [strategyRegistry.js](strategyRegistry.js)
+- Exit presets: [exitPresetRegistry.js](exitPresetRegistry.js)
+- Settings + state: [settingsManager.js](settingsManager.js), [stateManager.js](stateManager.js)
+- Trade history: [tradeHistory.js](tradeHistory.js)
+- README: [README.md](README.md)
